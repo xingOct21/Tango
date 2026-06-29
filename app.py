@@ -1,78 +1,40 @@
 import os
-from contextlib import contextmanager
 from datetime import date
 
-import psycopg2
-import psycopg2.extras
 from flask import Flask, jsonify, render_template, request
+from supabase import create_client
 
 from parser import parse_words
 from scheduler import next_review, is_due
 
 app = Flask(__name__)
-DATABASE_URL = os.environ["DATABASE_URL"]
-
-
-@contextmanager
-def db():
-    conn = psycopg2.connect(DATABASE_URL)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
 def get_daily_limit():
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT value FROM app_settings WHERE key = 'daily_limit'")
-            row = cur.fetchone()
-            return int(row[0]) if row else 20
+    res = sb.table("app_settings").select("value").eq("key", "daily_limit").execute()
+    return int(res.data[0]["value"]) if res.data else 20
 
 
 def get_progress():
-    with db() as conn:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT jp, level, next_review, last_reviewed FROM word_progress")
-            return {
-                row["jp"]: {
-                    "level": row["level"],
-                    "next_review": str(row["next_review"]),
-                    "last_reviewed": str(row["last_reviewed"]) if row["last_reviewed"] else None,
-                }
-                for row in cur.fetchall()
-            }
+    res = sb.table("word_progress").select("jp,level,next_review,last_reviewed").execute()
+    return {row["jp"]: row for row in res.data}
 
 
 def get_today_count():
     today = date.today().isoformat()
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT COUNT(*) FROM word_progress WHERE last_reviewed = %s", (today,)
-            )
-            return cur.fetchone()[0]
+    res = sb.table("word_progress").select("jp").eq("last_reviewed", today).execute()
+    return len(res.data)
 
 
 def save_progress(jp, level, next_review_date):
     today = date.today().isoformat()
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO word_progress (jp, level, next_review, last_reviewed)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (jp) DO UPDATE SET
-                    level = EXCLUDED.level,
-                    next_review = EXCLUDED.next_review,
-                    last_reviewed = EXCLUDED.last_reviewed
-                """,
-                (jp, level, next_review_date, today),
-            )
+    sb.table("word_progress").upsert({
+        "jp": jp,
+        "level": level,
+        "next_review": next_review_date,
+        "last_reviewed": today,
+    }).execute()
 
 
 @app.route("/")
@@ -86,15 +48,7 @@ def settings():
         return jsonify({"daily_limit": get_daily_limit()})
     data = request.get_json()
     new_limit = max(1, int(data["daily_limit"]))
-    with db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO app_settings (key, value) VALUES ('daily_limit', %s)
-                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
-                """,
-                (str(new_limit),),
-            )
+    sb.table("app_settings").upsert({"key": "daily_limit", "value": str(new_limit)}).execute()
     return jsonify({"ok": True, "daily_limit": new_limit})
 
 
@@ -108,17 +62,12 @@ def get_next():
 
     remaining = daily_limit - today_count
     if remaining <= 0:
-        return jsonify({
-            "done": True,
-            "reason": "daily_limit",
-            "today_count": today_count,
-            "daily_limit": daily_limit,
-        })
+        return jsonify({"done": True, "reason": "daily_limit",
+                        "today_count": today_count, "daily_limit": daily_limit})
 
     due = []
     for w in words:
-        key = w["jp"]
-        p = progress.get(key)
+        p = progress.get(w["jp"])
         if p is None:
             due.append({**w, "level": 0})
         elif (p["last_reviewed"] is None or p["last_reviewed"] < today) and is_due(p["next_review"]):
@@ -127,12 +76,8 @@ def get_next():
     due.sort(key=lambda x: x["level"])
 
     if not due:
-        return jsonify({
-            "done": True,
-            "reason": "all_done",
-            "today_count": today_count,
-            "daily_limit": daily_limit,
-        })
+        return jsonify({"done": True, "reason": "all_done",
+                        "today_count": today_count, "daily_limit": daily_limit})
 
     word = due[0]
     return jsonify({
