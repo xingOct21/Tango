@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>単語 Tango</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: #f5f5f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      color: #555;
+      letter-spacing: 0.1em;
+    }
+
+    #settings-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.1rem;
+      color: #aaa;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    #settings-btn:hover { background: #eee; color: #555; }
+
+    #stats {
+      font-size: 0.85rem;
+      color: #999;
+      margin-bottom: 24px;
+    }
+
+    #card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 400px;
+      padding: 40px 32px;
+      text-align: center;
+      min-height: 260px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    #section-tag {
+      font-size: 0.75rem;
+      background: #eee;
+      color: #777;
+      padding: 2px 10px;
+      border-radius: 20px;
+    }
+
+    #jp {
+      font-size: 2.8rem;
+      font-weight: bold;
+      color: #222;
+    }
+
+    #kana {
+      font-size: 1rem;
+      color: #aaa;
+      min-height: 1.4em;
+    }
+
+    #answer {
+      font-size: 1.4rem;
+      color: #e05a2b;
+      font-weight: 500;
+      margin-top: 8px;
+      display: none;
+    }
+
+    #level-bar {
+      display: flex;
+      gap: 4px;
+      margin-top: 4px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ddd;
+    }
+    .dot.filled { background: #e05a2b; }
+
+    #flip-btn {
+      margin-top: 24px;
+      padding: 12px 36px;
+      font-size: 1rem;
+      background: #222;
+      color: #fff;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    #score-btns {
+      display: none;
+      gap: 12px;
+      width: 100%;
+      max-width: 400px;
+      margin-top: 12px;
+    }
+
+    .score-btn {
+      flex: 1;
+      padding: 14px 0;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .s1 { background: #fde8e0; color: #c0392b; }
+    .s2 { background: #fef9e0; color: #b7950b; }
+    .s3 { background: #e0f5e9; color: #1e8449; }
+
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal {
+      background: #fff;
+      border-radius: 16px;
+      padding: 28px 24px;
+      width: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    #modal h2 { font-size: 1rem; color: #333; }
+    #modal label { font-size: 0.85rem; color: #666; }
+
+    #limit-input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      margin-top: 4px;
+    }
+
+    #modal-save {
+      padding: 12px;
+      background: #222;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    #modal-cancel {
+      padding: 10px;
+      background: none;
+      border: none;
+      color: #aaa;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>単語 Tango</h1>
+    <button id="settings-btn" onclick="openSettings()" title="设置">⚙</button>
+  </div>
+  <div id="stats"></div>
+
+  <div id="card">
+    <div id="section-tag"></div>
+    <div id="jp">…</div>
+    <div id="kana"></div>
+    <div id="level-bar"></div>
+    <div id="answer"></div>
+  </div>
+
+  <button id="flip-btn" onclick="flip()">翻牌</button>
+  <div id="score-btns">
+    <button class="score-btn s1" onclick="score(1)">不会</button>
+    <button class="score-btn s2" onclick="score(2)">模糊</button>
+    <button class="score-btn s3" onclick="score(3)">记住了</button>
+  </div>
+
+  <div id="modal-overlay">
+    <div id="modal">
+      <h2>每日设置</h2>
+      <label>
+        每天背单词数量
+        <input id="limit-input" type="number" min="1" max="200" value="20">
+      </label>
+      <button id="modal-save" onclick="saveSettings()">保存</button>
+      <button id="modal-cancel" onclick="closeSettings()">取消</button>
+    </div>
+  </div>
+
+  <script>
+    let current = null;
+
+    async function loadNext() {
+      const res = await fetch("/api/next");
+      const data = await res.json();
+
+      document.getElementById("score-btns").style.display = "none";
+      document.getElementById("answer").style.display = "none";
+      document.getElementById("flip-btn").style.display = "block";
+
+      if (data.done) {
+        const msg = data.reason === "daily_limit"
+          ? `今天的 ${data.daily_limit} 个单词已完成！<br><span style="font-size:0.85rem;color:#aaa">明天继续 💪</span>`
+          : `所有到期单词复习完了！<br><span style="font-size:0.85rem;color:#aaa">今日 ${data.today_count}/${data.daily_limit} 个</span>`;
+
+        document.getElementById("card").innerHTML =
+          `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">${msg}</div>`;
+        document.getElementById("flip-btn").style.display = "none";
+        document.getElementById("stats").textContent = "";
+        return;
+      }
+
+      current = data;
+      document.getElementById("jp").textContent = data.jp;
+      document.getElementById("kana").textContent = data.kana || "";
+      document.getElementById("answer").textContent = data.zh;
+      document.getElementById("section-tag").textContent = data.section;
+
+      const bar = document.getElementById("level-bar");
+      bar.innerHTML = "";
+      for (let i = 0; i < 5; i++) {
+        const d = document.createElement("div");
+        d.className = "dot" + (i < data.level ? " filled" : "");
+        bar.appendChild(d);
+      }
+
+      document.getElementById("stats").textContent =
+        `今日 ${data.today_count + 1}/${data.daily_limit}`;
+    }
+
+    function flip() {
+      document.getElementById("answer").style.display = "block";
+      document.getElementById("flip-btn").style.display = "none";
+      document.getElementById("score-btns").style.display = "flex";
+    }
+
+    async function score(s) {
+      await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jp: current.jp, score: s }),
+      });
+      loadNext();
+    }
+
+    async function openSettings() {
+      const res = await fetch("/api/settings");
+      const data = await res.json();
+      document.getElementById("limit-input").value = data.daily_limit;
+      document.getElementById("modal-overlay").classList.add("open");
+    }
+
+    function closeSettings() {
+      document.getElementById("modal-overlay").classList.remove("open");
+    }
+
+    async function saveSettings() {
+      const limit = parseInt(document.getElementById("limit-input").value);
+      await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ daily_limit: limit }),
+      });
+      closeSettings();
+    }
+
+    loadNext();
+  </script>
+</body>
+</html>
