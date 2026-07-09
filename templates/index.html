@@ -41,6 +41,21 @@
     }
     #settings-btn:hover { background: #eee; color: #555; }
 
+    #exit-mode-btn {
+      display: none;
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #aaa;
+      padding: 6px 10px;
+      border-radius: 6px;
+    }
+    #exit-mode-btn:hover { background: #eee; color: #555; }
+
     #stats {
       font-size: 0.85rem;
       color: #999;
@@ -214,6 +229,7 @@
   </style>
 </head>
 <body>
+  <button id="exit-mode-btn" onclick="exitCurrentMode()"></button>
   <div id="header">
     <h1>単語 Tango</h1>
     <button id="settings-btn" onclick="openSettings()" title="设置">⚙</button>
@@ -261,9 +277,16 @@
     let freeReviewList = [];
     let freeReviewIndex = 0;
 
+    function todayStr() {
+      return new Date().toISOString().slice(0, 10);
+    }
+
+    function isExtendedToday() {
+      return localStorage.getItem("tango_extended_date") === todayStr();
+    }
+
     async function loadNext() {
-      const today = new Date().toISOString().slice(0, 10);
-      const extended = localStorage.getItem("tango_extended_date") === today;
+      const extended = isExtendedToday();
       const res = await fetch("/api/next" + (extended ? "?extended=1" : ""));
       const data = await res.json();
 
@@ -396,8 +419,7 @@
     }
 
     function continueLearning() {
-      const today = new Date().toISOString().slice(0, 10);
-      localStorage.setItem("tango_extended_date", today);
+      localStorage.setItem("tango_extended_date", todayStr());
       loadNext();
     }
 
