@@ -126,6 +126,26 @@
       margin-top: 12px;
     }
 
+    #done-actions {
+      display: none;
+      gap: 12px;
+      width: 100%;
+      max-width: 400px;
+      margin-top: 12px;
+    }
+
+    .done-action-btn {
+      flex: 1;
+      padding: 14px 0;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      background: #eee;
+      color: #555;
+    }
+
     .score-btn {
       flex: 1;
       padding: 14px 0;
@@ -214,6 +234,10 @@
     <button class="score-btn s2" onclick="score(2)">模糊</button>
     <button class="score-btn s3" onclick="score(3)">记住了</button>
   </div>
+  <div id="done-actions">
+    <button class="done-action-btn" onclick="continueLearning()">继续学习</button>
+    <button class="done-action-btn" onclick="startFreeReview()">复习</button>
+  </div>
 
   <div id="modal-overlay">
     <div id="modal">
@@ -235,12 +259,15 @@
     let current = null;
 
     async function loadNext() {
-      const res = await fetch("/api/next");
+      const today = new Date().toISOString().slice(0, 10);
+      const extended = localStorage.getItem("tango_extended_date") === today;
+      const res = await fetch("/api/next" + (extended ? "?extended=1" : ""));
       const data = await res.json();
 
       document.getElementById("score-btns").style.display = "none";
       document.getElementById("answer").style.display = "none";
       document.getElementById("flip-btn").style.display = "block";
+      document.getElementById("done-actions").style.display = "none";
 
       if (data.done) {
         const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
@@ -252,6 +279,7 @@
           `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">${msg}</div>`;
         document.getElementById("flip-btn").style.display = "none";
         document.getElementById("stats").textContent = "";
+        document.getElementById("done-actions").style.display = "flex";
         return;
       }
 
@@ -322,6 +350,12 @@
         body: JSON.stringify({ new_words_limit: newWordsLimit, review_words_limit: reviewWordsLimit }),
       });
       closeSettings();
+    }
+
+    function continueLearning() {
+      const today = new Date().toISOString().slice(0, 10);
+      localStorage.setItem("tango_extended_date", today);
+      loadNext();
     }
 
     loadNext();
