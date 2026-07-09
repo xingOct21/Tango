@@ -28,9 +28,15 @@ def get_progress():
     return {row["jp"]: row for row in res.data}
 
 
-def get_today_count():
+def get_today_new_count():
     today = date.today().isoformat()
-    res = sb.table("word_progress").select("jp").eq("last_reviewed", today).execute()
+    res = sb.table("word_progress").select("jp").eq("last_reviewed", today).eq("review_count", 1).execute()
+    return len(res.data)
+
+
+def get_today_review_count():
+    today = date.today().isoformat()
+    res = sb.table("word_progress").select("jp").eq("last_reviewed", today).gt("review_count", 1).execute()
     return len(res.data)
 
 
