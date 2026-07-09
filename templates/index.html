@@ -285,7 +285,32 @@
       return localStorage.getItem("tango_extended_date") === todayStr();
     }
 
+    function updateExitButton() {
+      const btn = document.getElementById("exit-mode-btn");
+      if (isFreeReview) {
+        btn.textContent = "← 退出复习";
+        btn.style.display = "block";
+      } else if (isExtendedToday()) {
+        btn.textContent = "← 返回";
+        btn.style.display = "block";
+      } else {
+        btn.style.display = "none";
+      }
+    }
+
+    function exitCurrentMode() {
+      if (isFreeReview) {
+        isFreeReview = false;
+        freeReviewList = [];
+        freeReviewIndex = 0;
+      } else {
+        localStorage.removeItem("tango_extended_date");
+      }
+      loadNext();
+    }
+
     async function loadNext() {
+      updateExitButton();
       const extended = isExtendedToday();
       const res = await fetch("/api/next" + (extended ? "?extended=1" : ""));
       const data = await res.json();
@@ -389,6 +414,7 @@
       freeReviewList = await res.json();
       freeReviewIndex = 0;
       isFreeReview = true;
+      updateExitButton();
       document.getElementById("done-actions").style.display = "none";
       showFreeReviewCard();
     }
@@ -400,6 +426,7 @@
 
       if (freeReviewIndex >= freeReviewList.length) {
         isFreeReview = false;
+        updateExitButton();
         document.getElementById("card").innerHTML =
           `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">复习完了！</div>`;
         document.getElementById("flip-btn").style.display = "none";
