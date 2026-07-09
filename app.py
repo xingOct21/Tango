@@ -164,5 +164,15 @@ def mastery():
     return jsonify({"ok": True})
 
 
+@app.route("/api/review_today")
+def review_today():
+    today = date.today().isoformat()
+    res = sb.table("word_progress").select("jp").eq("last_reviewed", today).execute()
+    studied_jp = {row["jp"] for row in res.data}
+    words = parse_words()
+    today_words = [w for w in words if w["jp"] in studied_jp]
+    return jsonify(today_words)
+
+
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=5001)
