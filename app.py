@@ -17,7 +17,9 @@ def get_daily_limit():
 
 
 def get_progress():
-    res = sb.table("word_progress").select("jp,level,next_review,last_reviewed").execute()
+    res = sb.table("word_progress").select(
+        "jp,level,next_review,last_reviewed,review_count,mastered"
+    ).execute()
     return {row["jp"]: row for row in res.data}
 
 
@@ -27,13 +29,14 @@ def get_today_count():
     return len(res.data)
 
 
-def save_progress(jp, level, next_review_date):
+def save_progress(jp, level, next_review_date, review_count):
     today = date.today().isoformat()
     sb.table("word_progress").upsert({
         "jp": jp,
         "level": level,
         "next_review": next_review_date,
         "last_reviewed": today,
+        "review_count": review_count,
     }).execute()
 
 
@@ -100,7 +103,9 @@ def review():
     score = int(data["score"])
 
     progress = get_progress()
-    current_level = progress.get(jp, {}).get("level", 0)
+    current = progress.get(jp, {})
+    current_level = current.get("level", 0)
+    current_count = current.get("review_count", 0)
 
     if score == 1:
         new_level = max(0, current_level - 1)
@@ -109,8 +114,10 @@ def review():
     else:
         new_level = min(5, current_level + 1)
 
-    save_progress(jp, new_level, next_review(new_level))
-    return jsonify({"ok": True})
+    new_count = current_count + 1
+    save_progress(jp, new_level, next_review(new_level), new_count)
+
+    return jsonify({"ok": True, "level": new_level, "reached_max_level": new_level == 5})
 
 
 if __name__ == "__main__":
