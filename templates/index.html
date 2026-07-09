@@ -280,11 +280,24 @@
     }
 
     async function score(s) {
-      await fetch("/api/review", {
+      const res = await fetch("/api/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jp: current.jp, score: s }),
       });
+      const data = await res.json();
+
+      if (data.reached_max_level) {
+        const wantsMastery = confirm(`「${current.jp}」已经记得很牢固了，要斩掉吗？`);
+        if (wantsMastery) {
+          await fetch("/api/mastery", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jp: current.jp }),
+          });
+        }
+      }
+
       loadNext();
     }
 
