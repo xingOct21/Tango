@@ -219,8 +219,12 @@
     <div id="modal">
       <h2>每日设置</h2>
       <label>
-        每天背单词数量
-        <input id="limit-input" type="number" min="1" max="200" value="20">
+        每天学习新词数量
+        <input id="new-limit-input" type="number" min="0" max="200" value="10">
+      </label>
+      <label>
+        每天复习旧词数量
+        <input id="review-limit-input" type="number" min="0" max="200" value="20">
       </label>
       <button id="modal-save" onclick="saveSettings()">保存</button>
       <button id="modal-cancel" onclick="closeSettings()">取消</button>
@@ -239,9 +243,10 @@
       document.getElementById("flip-btn").style.display = "block";
 
       if (data.done) {
+        const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
         const msg = data.reason === "daily_limit"
-          ? `今天的 ${data.daily_limit} 个单词已完成！<br><span style="font-size:0.85rem;color:#aaa">明天继续 💪</span>`
-          : `所有到期单词复习完了！<br><span style="font-size:0.85rem;color:#aaa">今日 ${data.today_count}/${data.daily_limit} 个</span>`;
+          ? `今天的额度已用完！<br><span style="font-size:0.85rem;color:#aaa">${progressLine}</span>`
+          : `所有到期单词复习完了！<br><span style="font-size:0.85rem;color:#aaa">${progressLine}</span>`;
 
         document.getElementById("card").innerHTML =
           `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">${msg}</div>`;
@@ -265,7 +270,7 @@
       }
 
       document.getElementById("stats").textContent =
-        `今日 ${data.today_count + 1}/${data.daily_limit}`;
+        `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
     }
 
     function flip() {
@@ -286,7 +291,8 @@
     async function openSettings() {
       const res = await fetch("/api/settings");
       const data = await res.json();
-      document.getElementById("limit-input").value = data.daily_limit;
+      document.getElementById("new-limit-input").value = data.new_words_limit;
+      document.getElementById("review-limit-input").value = data.review_words_limit;
       document.getElementById("modal-overlay").classList.add("open");
     }
 
@@ -295,11 +301,12 @@
     }
 
     async function saveSettings() {
-      const limit = parseInt(document.getElementById("limit-input").value);
+      const newWordsLimit = parseInt(document.getElementById("new-limit-input").value);
+      const reviewWordsLimit = parseInt(document.getElementById("review-limit-input").value);
       await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daily_limit: limit }),
+        body: JSON.stringify({ new_words_limit: newWordsLimit, review_words_limit: reviewWordsLimit }),
       });
       closeSettings();
     }
