@@ -79,40 +79,56 @@ def settings():
 def get_next():
     words = parse_words()
     progress = get_progress()
-    daily_limit = get_daily_limit()
-    today_count = get_today_count()
+    new_words_limit = get_new_words_limit()
+    review_words_limit = get_review_words_limit()
+    today_new_count = get_today_new_count()
+    today_review_count = get_today_review_count()
     today = date.today().isoformat()
+    extended = request.args.get("extended") == "1"
 
-    remaining = daily_limit - today_count
-    if remaining <= 0:
-        return jsonify({"done": True, "reason": "daily_limit",
-                        "today_count": today_count, "daily_limit": daily_limit})
-
-    due = []
+    review_due = []
+    new_words = []
     for w in words:
         p = progress.get(w["jp"])
         if p is None:
-            due.append({**w, "level": 0})
+            new_words.append({**w, "level": 0})
+        elif p.get("mastered"):
+            continue
         elif (p["last_reviewed"] is None or p["last_reviewed"] < today) and is_due(p["next_review"]):
-            due.append({**w, "level": p["level"]})
+            review_due.append({**w, "level": p["level"]})
 
-    due.sort(key=lambda x: x["level"])
+    review_due.sort(key=lambda x: x["level"])
 
-    if not due:
-        return jsonify({"done": True, "reason": "all_done",
-                        "today_count": today_count, "daily_limit": daily_limit})
+    remaining_review = review_words_limit - today_review_count
+    remaining_new = new_words_limit - today_new_count
 
-    word = due[0]
+    def build_response(word):
+        return jsonify({
+            "done": False,
+            "jp": word["jp"],
+            "kana": word["kana"],
+            "zh": word["zh"],
+            "section": word["section"],
+            "level": word["level"],
+            "today_new_count": today_new_count,
+            "new_words_limit": new_words_limit,
+            "today_review_count": today_review_count,
+            "review_words_limit": review_words_limit,
+        })
+
+    if (extended or remaining_review > 0) and review_due:
+        return build_response(review_due[0])
+    if (extended or remaining_new > 0) and new_words:
+        return build_response(new_words[0])
+
+    reason = "all_done" if extended or remaining_review > 0 or remaining_new > 0 else "daily_limit"
     return jsonify({
-        "done": False,
-        "jp": word["jp"],
-        "kana": word["kana"],
-        "zh": word["zh"],
-        "section": word["section"],
-        "level": word["level"],
-        "today_count": today_count,
-        "daily_limit": daily_limit,
-        "remaining": remaining,
+        "done": True,
+        "reason": reason,
+        "today_new_count": today_new_count,
+        "new_words_limit": new_words_limit,
+        "today_review_count": today_review_count,
+        "review_words_limit": review_words_limit,
     })
 
 
