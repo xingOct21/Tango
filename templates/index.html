@@ -257,6 +257,9 @@
 
   <script>
     let current = null;
+    let isFreeReview = false;
+    let freeReviewList = [];
+    let freeReviewIndex = 0;
 
     async function loadNext() {
       const today = new Date().toISOString().slice(0, 10);
@@ -308,6 +311,12 @@
     }
 
     async function score(s) {
+      if (isFreeReview) {
+        freeReviewIndex++;
+        showFreeReviewCard();
+        return;
+      }
+
       const res = await fetch("/api/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -350,6 +359,40 @@
         body: JSON.stringify({ new_words_limit: newWordsLimit, review_words_limit: reviewWordsLimit }),
       });
       closeSettings();
+    }
+
+    async function startFreeReview() {
+      const res = await fetch("/api/review_today");
+      freeReviewList = await res.json();
+      freeReviewIndex = 0;
+      isFreeReview = true;
+      document.getElementById("done-actions").style.display = "none";
+      showFreeReviewCard();
+    }
+
+    function showFreeReviewCard() {
+      document.getElementById("score-btns").style.display = "none";
+      document.getElementById("answer").style.display = "none";
+      document.getElementById("flip-btn").style.display = "block";
+
+      if (freeReviewIndex >= freeReviewList.length) {
+        isFreeReview = false;
+        document.getElementById("card").innerHTML =
+          `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">复习完了！</div>`;
+        document.getElementById("flip-btn").style.display = "none";
+        document.getElementById("done-actions").style.display = "flex";
+        return;
+      }
+
+      const word = freeReviewList[freeReviewIndex];
+      current = word;
+      document.getElementById("jp").textContent = word.jp;
+      document.getElementById("kana").textContent = word.kana || "";
+      document.getElementById("answer").textContent = word.zh;
+      document.getElementById("section-tag").textContent = word.section;
+      document.getElementById("level-bar").innerHTML = "";
+      document.getElementById("stats").textContent =
+        `自由复习 ${freeReviewIndex + 1}/${freeReviewList.length}`;
     }
 
     function continueLearning() {
