@@ -11,8 +11,13 @@ app = Flask(__name__)
 sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
 
 
-def get_daily_limit():
-    res = sb.table("app_settings").select("value").eq("key", "daily_limit").execute()
+def get_new_words_limit():
+    res = sb.table("app_settings").select("value").eq("key", "new_words_limit").execute()
+    return int(res.data[0]["value"]) if res.data else 10
+
+
+def get_review_words_limit():
+    res = sb.table("app_settings").select("value").eq("key", "review_words_limit").execute()
     return int(res.data[0]["value"]) if res.data else 20
 
 
@@ -48,11 +53,20 @@ def index():
 @app.route("/api/settings", methods=["GET", "POST"])
 def settings():
     if request.method == "GET":
-        return jsonify({"daily_limit": get_daily_limit()})
+        return jsonify({
+            "new_words_limit": get_new_words_limit(),
+            "review_words_limit": get_review_words_limit(),
+        })
     data = request.get_json()
-    new_limit = max(1, int(data["daily_limit"]))
-    sb.table("app_settings").upsert({"key": "daily_limit", "value": str(new_limit)}).execute()
-    return jsonify({"ok": True, "daily_limit": new_limit})
+    new_words_limit = max(0, int(data["new_words_limit"]))
+    review_words_limit = max(0, int(data["review_words_limit"]))
+    sb.table("app_settings").upsert({"key": "new_words_limit", "value": str(new_words_limit)}).execute()
+    sb.table("app_settings").upsert({"key": "review_words_limit", "value": str(review_words_limit)}).execute()
+    return jsonify({
+        "ok": True,
+        "new_words_limit": new_words_limit,
+        "review_words_limit": review_words_limit,
+    })
 
 
 @app.route("/api/next")
