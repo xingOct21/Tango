@@ -1,5 +1,6 @@
 import os
 from datetime import date
+from itertools import zip_longest
 
 from flask import Flask, jsonify, render_template, request
 from supabase import create_client
@@ -98,6 +99,14 @@ def get_next():
             review_due.append({**w, "level": p["level"]})
 
     review_due.sort(key=lambda x: x["level"])
+
+    new_words_by_section = {}
+    for w in new_words:
+        new_words_by_section.setdefault(w["section"], []).append(w)
+    new_words = [
+        w for group in zip_longest(*new_words_by_section.values())
+        for w in group if w is not None
+    ]
 
     remaining_review = review_words_limit - today_review_count
     remaining_new = new_words_limit - today_new_count
