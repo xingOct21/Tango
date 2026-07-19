@@ -1,6 +1,5 @@
 import os
 from datetime import date
-from itertools import zip_longest
 
 from flask import Flask, jsonify, render_template, request
 from supabase import create_client
@@ -103,10 +102,12 @@ def get_next():
     new_words_by_section = {}
     for w in new_words:
         new_words_by_section.setdefault(w["section"], []).append(w)
-    new_words = [
-        w for group in zip_longest(*new_words_by_section.values())
-        for w in group if w is not None
-    ]
+    if new_words_by_section:
+        sections = list(new_words_by_section.values())
+        cursor = today_new_count % len(sections)
+        new_words = [sections[cursor][0]]
+    else:
+        new_words = []
 
     remaining_review = review_words_limit - today_review_count
     remaining_new = new_words_limit - today_new_count
