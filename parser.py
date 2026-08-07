@@ -1,12 +1,18 @@
 import os
 import re
 
-WORD_MD = os.path.join(os.path.dirname(os.path.abspath(__file__)), "word.md")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WORD_FILES = {
+    "jp": os.path.join(BASE_DIR, "word.md"),
+    "en": os.path.join(BASE_DIR, "word_en.md"),
+}
+HEADER_LABELS = {"日语", "英语", "问题"}
 
 
-def parse_words():
+def parse_words(book="jp"):
+    path = WORD_FILES.get(book, WORD_FILES["jp"])
     words = []
-    with open(WORD_MD, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         current_section = ""
         for line in f:
             line = line.rstrip()
@@ -14,13 +20,13 @@ def parse_words():
             if section_match:
                 current_section = section_match.group(1)
                 continue
-            if not line.startswith("|") or line.startswith("| 日语") or line.startswith("|---"):
+            if not line.startswith("|") or line.startswith("|---"):
                 continue
             cols = [c.strip() for c in line.strip("|").split("|")]
             if len(cols) < 3:
                 continue
             jp, kana, zh = cols[0], cols[1], cols[2]
-            if not jp or not zh:
+            if jp in HEADER_LABELS or not jp or not zh:
                 continue
             words.append({"jp": jp, "kana": kana, "zh": zh, "section": current_section})
     return words

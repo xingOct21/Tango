@@ -41,6 +41,32 @@
     }
     #settings-btn:hover { background: #eee; color: #555; }
 
+    #book-switch {
+      display: flex;
+      gap: 4px;
+      background: #eee;
+      border-radius: 20px;
+      padding: 3px;
+      margin-bottom: 16px;
+    }
+
+    .book-btn {
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 0.8rem;
+      color: #999;
+      padding: 6px 16px;
+      border-radius: 16px;
+    }
+
+    .book-btn.active {
+      background: #fff;
+      color: #222;
+      font-weight: 600;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
     #exit-mode-btn {
       display: none;
       position: fixed;
@@ -104,6 +130,25 @@
       font-weight: 500;
       margin-top: 8px;
       display: none;
+    }
+
+    body.book-en #jp {
+      font-size: 1.4rem;
+      line-height: 1.5;
+    }
+
+    body.book-en #kana {
+      font-size: 1.15rem;
+      color: #222;
+      font-weight: 600;
+      line-height: 1.5;
+      text-align: left;
+    }
+
+    body.book-en #answer {
+      font-size: 1.05rem;
+      line-height: 1.5;
+      text-align: left;
     }
 
     #level-bar {
@@ -234,6 +279,10 @@
     <h1>単語 Tango</h1>
     <button id="settings-btn" onclick="openSettings()" title="设置">⚙</button>
   </div>
+  <div id="book-switch">
+    <button class="book-btn" data-book="jp" onclick="switchBook('jp')">日语</button>
+    <button class="book-btn" data-book="en" onclick="switchBook('en')">English</button>
+  </div>
   <div id="stats"></div>
 
   <div id="card">
@@ -276,6 +325,32 @@
     let isFreeReview = false;
     let freeReviewList = [];
     let freeReviewIndex = 0;
+    let currentBook = localStorage.getItem("tango_book") || "jp";
+
+    function updateBookSwitch() {
+      document.querySelectorAll(".book-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.book === currentBook);
+      });
+      document.body.classList.toggle("book-en", currentBook === "en");
+    }
+
+    function switchBook(book) {
+      if (book === currentBook) return;
+      currentBook = book;
+      localStorage.setItem("tango_book", book);
+      isFreeReview = false;
+      freeReviewList = [];
+      freeReviewIndex = 0;
+      localStorage.removeItem("tango_extended_date");
+      updateBookSwitch();
+      loadNext();
+    }
+
+    function renderText(el, text) {
+      const div = document.createElement("div");
+      div.textContent = text || "";
+      el.innerHTML = div.innerHTML.replace(/\\n/g, "<br>");
+    }
 
     function todayStr() {
       return new Date().toISOString().slice(0, 10);
@@ -312,7 +387,9 @@
     async function loadNext() {
       updateExitButton();
       const extended = isExtendedToday();
-      const res = await fetch("/api/next" + (extended ? "?extended=1" : ""));
+      const params = new URLSearchParams({ book: currentBook });
+      if (extended) params.set("extended", "1");
+      const res = await fetch("/api/next?" + params.toString());
       const data = await res.json();
 
       document.getElementById("score-btns").style.display = "none";
@@ -335,9 +412,10 @@
       }
 
       current = data;
-      document.getElementById("jp").textContent = data.jp;
-      document.getElementById("kana").textContent = data.kana || "";
-      document.getElementById("answer").textContent = data.zh;
+      renderText(document.getElementById("jp"), data.jp);
+      renderText(document.getElementById("kana"), data.kana || "");
+      document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
+      renderText(document.getElementById("answer"), data.zh);
       document.getElementById("section-tag").textContent = data.section;
 
       const bar = document.getElementById("level-bar");
@@ -354,6 +432,7 @@
 
     function flip() {
       document.getElementById("answer").style.display = "block";
+      document.getElementById("kana").style.display = "block";
       document.getElementById("flip-btn").style.display = "none";
       document.getElementById("score-btns").style.display = "flex";
     }
@@ -410,7 +489,7 @@
     }
 
     async function startFreeReview() {
-      const res = await fetch("/api/review_today");
+      const res = await fetch("/api/review_today?book=" + currentBook);
       freeReviewList = await res.json();
       freeReviewIndex = 0;
       isFreeReview = true;
@@ -436,9 +515,10 @@
 
       const word = freeReviewList[freeReviewIndex];
       current = word;
-      document.getElementById("jp").textContent = word.jp;
-      document.getElementById("kana").textContent = word.kana || "";
-      document.getElementById("answer").textContent = word.zh;
+      renderText(document.getElementById("jp"), word.jp);
+      renderText(document.getElementById("kana"), word.kana || "");
+      document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
+      renderText(document.getElementById("answer"), word.zh);
       document.getElementById("section-tag").textContent = word.section;
       document.getElementById("level-bar").innerHTML = "";
       document.getElementById("stats").textContent =
@@ -450,6 +530,7 @@
       loadNext();
     }
 
+    updateBookSwitch();
     loadNext();
   </script>
 </body>

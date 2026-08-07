@@ -4,7 +4,7 @@ from datetime import date
 from flask import Flask, jsonify, render_template, request
 from supabase import create_client
 
-from parser import parse_words
+from parser import WORD_FILES, parse_words
 from scheduler import next_review, is_due
 
 app = Flask(__name__)
@@ -77,7 +77,10 @@ def settings():
 
 @app.route("/api/next")
 def get_next():
-    words = parse_words()
+    book = request.args.get("book", "jp")
+    if book not in WORD_FILES:
+        book = "jp"
+    words = parse_words(book)
     progress = get_progress()
     new_words_limit = get_new_words_limit()
     review_words_limit = get_review_words_limit()
@@ -176,10 +179,13 @@ def mastery():
 
 @app.route("/api/review_today")
 def review_today():
+    book = request.args.get("book", "jp")
+    if book not in WORD_FILES:
+        book = "jp"
     today = date.today().isoformat()
     res = sb.table("word_progress").select("jp").eq("last_reviewed", today).execute()
     studied_jp = {row["jp"] for row in res.data}
-    words = parse_words()
+    words = parse_words(book)
     today_words = [w for w in words if w["jp"] in studied_jp]
     return jsonify(today_words)
 
