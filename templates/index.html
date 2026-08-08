@@ -447,7 +447,7 @@
       const res = await fetch("/api/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jp: current.jp, score: s }),
+        body: JSON.stringify({ jp: current.jp, score: s, book: currentBook }),
       });
       const data = await res.json();
 
@@ -457,7 +457,7 @@
           await fetch("/api/mastery", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ jp: current.jp }),
+            body: JSON.stringify({ jp: current.jp, book: currentBook }),
           });
         }
       }
@@ -466,7 +466,9 @@
     }
 
     async function openSettings() {
-      const res = await fetch("/api/settings");
+      document.querySelector("#modal h2").textContent =
+        currentBook === "en" ? "每日设置 · English" : "每日设置 · 日语";
+      const res = await fetch("/api/settings?book=" + currentBook);
       const data = await res.json();
       document.getElementById("new-limit-input").value = data.new_words_limit;
       document.getElementById("review-limit-input").value = data.review_words_limit;
@@ -483,9 +485,14 @@
       await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ new_words_limit: newWordsLimit, review_words_limit: reviewWordsLimit }),
+        body: JSON.stringify({
+          book: currentBook,
+          new_words_limit: newWordsLimit,
+          review_words_limit: reviewWordsLimit,
+        }),
       });
       closeSettings();
+      loadNext();
     }
 
     async function startFreeReview() {
