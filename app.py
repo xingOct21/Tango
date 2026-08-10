@@ -42,29 +42,49 @@ def get_review_words_limit(book):
     return get_limit("review_words_limit", book)
 
 
+PAGE_SIZE = 1000
+
+
+def fetch_all(make_query):
+    """分页取全量。
+
+    PostgREST 单次响应有行数上限（Supabase 默认 1000），直接 select 会被静默
+    截断——被截掉的词会重新变成“没学过的新词”。这里翻页到空页为止，并按实际
+    返回条数推进游标，所以不依赖上限具体是多少。
+    """
+    rows = []
+    start = 0
+    while True:
+        page = make_query().range(start, start + PAGE_SIZE - 1).execute().data
+        rows.extend(page)
+        if not page:
+            return rows
+        start += len(page)
+
+
 def get_progress(book):
-    res = sb.table("word_progress").select(
+    rows = fetch_all(lambda: sb.table("word_progress").select(
         "jp,level,next_review,last_reviewed,review_count,mastered"
-    ).eq("book", book).execute()
-    return {row["jp"]: row for row in res.data}
+    ).eq("book", book))
+    return {row["jp"]: row for row in rows}
 
 
 def get_today_new_count(book):
     today = date.today().isoformat()
-    res = sb.table("word_progress").select("jp").eq("book", book).eq(
-        "last_reviewed", today).eq("review_count", 1).execute()
-    return len(res.data)
+    return len(fetch_all(lambda: sb.table("word_progress").select("jp").eq(
+        "book", book).eq("last_reviewed", today).eq("review_count", 1)))
 
 
 def get_today_review_count(book):
     today = date.today().isoformat()
-    res = sb.table("word_progress").select("jp").eq("book", book).eq(
-        "last_reviewed", today).gt("review_count", 1).execute()
-    return len(res.data)
+    return len(fetch_all(lambda: sb.table("word_progress").select("jp").eq(
+        "book", book).eq("last_reviewed", today).gt("review_count", 1)))
 
 
 def save_progress(jp, level, next_review_date, review_count, book):
     today = date.today().isoformat()
+    # 冲突目标必须写全 (jp, book)。主键只有 jp 的话，同一条文本在两个单词本之间
+    # 会互相覆盖——upsert 把已有行的 book 直接改掉，等于把进度从一本搬到另一本。
     sb.table("word_progress").upsert({
         "jp": jp,
         "book": book,
@@ -72,7 +92,7 @@ def save_progress(jp, level, next_review_date, review_count, book):
         "next_review": next_review_date,
         "last_reviewed": today,
         "review_count": review_count,
-    }).execute()
+    }, on_conflict="jp,book").execute()
 
 
 @app.route("/")
@@ -162,7 +182,11 @@ def get_next():
     if (extended or remaining_new > 0) and new_words:
         return build_response(new_words[0])
 
-    reason = "all_done" if extended or remaining_review > 0 or remaining_new > 0 else "daily_limit"
+    # 只有"还有词可出、但被额度挡住"才算额度用完。此前用 or 串联三个条件，
+    # 新词额度已满、复习额度尚有剩余时会误报成"所有到期单词复习完了"。
+    blocked_review = bool(review_due) and not extended and remaining_review <= 0
+    blocked_new = bool(new_words) and not extended and remaining_new <= 0
+    reason = "daily_limit" if blocked_review or blocked_new else "all_done"
     return jsonify({
         "done": True,
         "reason": reason,
@@ -211,8 +235,9 @@ def mastery():
 def review_today():
     book = resolve_book(request.args.get("book"))
     today = date.today().isoformat()
-    res = sb.table("word_progress").select("jp").eq("book", book).eq("last_reviewed", today).execute()
-    studied_jp = {row["jp"] for row in res.data}
+    studied_jp = {row["jp"] for row in fetch_all(
+        lambda: sb.table("word_progress").select("jp").eq("book", book).eq(
+            "last_reviewed", today))}
     words = parse_words(book)
     today_words = [w for w in words if w["jp"] in studied_jp]
     return jsonify(today_words)

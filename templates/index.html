@@ -151,6 +151,19 @@
       text-align: left;
     }
 
+    #done-msg {
+      display: none;
+      text-align: center;
+      color: #555;
+      font-size: 1.1rem;
+      line-height: 2;
+    }
+
+    #done-msg .sub {
+      font-size: 0.85rem;
+      color: #aaa;
+    }
+
     #level-bar {
       display: flex;
       gap: 4px;
@@ -291,6 +304,7 @@
     <div id="kana"></div>
     <div id="level-bar"></div>
     <div id="answer"></div>
+    <div id="done-msg"></div>
   </div>
 
   <button id="flip-btn" onclick="flip()">翻牌</button>
@@ -341,9 +355,33 @@
       isFreeReview = false;
       freeReviewList = [];
       freeReviewIndex = 0;
-      localStorage.removeItem("tango_extended_date");
       updateBookSwitch();
       loadNext();
+    }
+
+    // 卡片正面的几个元素，和"已完成"提示互相切换显示。
+    //
+    // 这里以前是直接 `card.innerHTML = ...` 覆盖整张卡片，等于把 #jp / #answer
+    // 这些元素从 DOM 里删掉。之后任何一次 loadNext() 走到
+    // `document.getElementById("answer").style.display` 都会对 null 取属性而抛异常，
+    // 函数当场中断 —— 表现就是一本额度用完后，切到另一本、点「继续学习」、点「复习」
+    // 全都没反应，页面卡在"额度已用完"那张卡片上，看起来像另一本也被限制了。
+    const WORD_FACE_IDS = ["section-tag", "jp", "kana", "level-bar", "answer"];
+
+    function showDoneMessage(html) {
+      WORD_FACE_IDS.forEach((id) => {
+        document.getElementById(id).style.display = "none";
+      });
+      const el = document.getElementById("done-msg");
+      el.innerHTML = html;
+      el.style.display = "block";
+    }
+
+    function showWordFace() {
+      document.getElementById("done-msg").style.display = "none";
+      WORD_FACE_IDS.forEach((id) => {
+        document.getElementById(id).style.display = "";
+      });
     }
 
     function renderText(el, text) {
@@ -356,8 +394,14 @@
       return new Date().toISOString().slice(0, 10);
     }
 
+    // 「继续学习」的展开状态按本存。之前是一个全局 key，
+    // 在一本里点了展开，切到另一本会把它带过去 / 切回来又丢掉。
+    function extendedKey() {
+      return "tango_extended_" + currentBook;
+    }
+
     function isExtendedToday() {
-      return localStorage.getItem("tango_extended_date") === todayStr();
+      return localStorage.getItem(extendedKey()) === todayStr();
     }
 
     function updateExitButton() {
@@ -379,7 +423,7 @@
         freeReviewList = [];
         freeReviewIndex = 0;
       } else {
-        localStorage.removeItem("tango_extended_date");
+        localStorage.removeItem(extendedKey());
       }
       loadNext();
     }
@@ -399,18 +443,18 @@
 
       if (data.done) {
         const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
-        const msg = data.reason === "daily_limit"
-          ? `今天的额度已用完！<br><span style="font-size:0.85rem;color:#aaa">${progressLine}</span>`
-          : `所有到期单词复习完了！<br><span style="font-size:0.85rem;color:#aaa">${progressLine}</span>`;
+        const head = data.reason === "daily_limit"
+          ? "今天的额度已用完！"
+          : "所有到期单词复习完了！";
 
-        document.getElementById("card").innerHTML =
-          `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">${msg}</div>`;
+        showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>`);
         document.getElementById("flip-btn").style.display = "none";
         document.getElementById("stats").textContent = "";
         document.getElementById("done-actions").style.display = "flex";
         return;
       }
 
+      showWordFace();
       current = data;
       renderText(document.getElementById("jp"), data.jp);
       renderText(document.getElementById("kana"), data.kana || "");
@@ -513,13 +557,13 @@
       if (freeReviewIndex >= freeReviewList.length) {
         isFreeReview = false;
         updateExitButton();
-        document.getElementById("card").innerHTML =
-          `<div style="text-align:center;color:#555;font-size:1.1rem;line-height:2">复习完了！</div>`;
+        showDoneMessage("复习完了！");
         document.getElementById("flip-btn").style.display = "none";
         document.getElementById("done-actions").style.display = "flex";
         return;
       }
 
+      showWordFace();
       const word = freeReviewList[freeReviewIndex];
       current = word;
       renderText(document.getElementById("jp"), word.jp);
@@ -533,10 +577,11 @@
     }
 
     function continueLearning() {
-      localStorage.setItem("tango_extended_date", todayStr());
+      localStorage.setItem(extendedKey(), todayStr());
       loadNext();
     }
 
+    localStorage.removeItem("tango_extended_date");  // 清掉分本之前的旧 key
     updateBookSwitch();
     loadNext();
   </script>
