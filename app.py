@@ -146,9 +146,13 @@ def get_next():
         elif p.get("mastered"):
             continue
         elif (p["last_reviewed"] is None or p["last_reviewed"] < today) and is_due(p["next_review"]):
-            review_due.append({**w, "level": p["level"]})
+            review_due.append({**w, "level": p["level"], "next_review": p["next_review"]})
 
-    review_due.sort(key=lambda x: x["level"])
+    # 逾期最久的先出，同一天到期的再按熟悉度从低到高。
+    # 此前只按 level 升序：复习需求（一个词升到满级要 4 次复习，10 新词/天 ≈ 40 次/天）
+    # 长期高于复习额度（默认 20），缺口就全部落在队尾——也就是熟悉度最高的那批词身上。
+    # 它们永远排不到、也就永远升不到 level 5，斩词的触发条件因此一次都没被满足过。
+    review_due.sort(key=lambda x: (x["next_review"], x["level"]))
 
     new_words_by_section = {}
     for w in new_words:
@@ -179,7 +183,9 @@ def get_next():
 
     if (extended or remaining_review > 0) and review_due:
         return build_response(review_due[0])
-    if (extended or remaining_new > 0) and new_words:
+    # 还有到期没复习的词就不发新词。复习额度用完还继续灌新词的话，积压只增不减，
+    # 高熟悉度的词会被越压越靠后。等积压清完，新词自然恢复。
+    if (extended or remaining_new > 0) and new_words and not review_due:
         return build_response(new_words[0])
 
     # 只有"还有词可出、但被额度挡住"才算额度用完。此前用 or 串联三个条件，
