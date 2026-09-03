@@ -5,8 +5,8 @@
  *     node tests/test_drill.js
  *
  * 风格对齐 tests/test_srs_flow.py：断言里写清失败意味着什么，
- * 并且带反向断言（见最后一节）——测试必须能在代码变坏时红，
- * 否则它测的是自己而不是代码（DEVLOG v2.2 的教训）。
+ * 反向断言随后续任务补上（测试必须能在代码变坏时红，否则它测的是
+ * 自己而不是代码 —— DEVLOG v2.2 的教训）。
  */
 const assert = require("assert");
 const path = require("path");
