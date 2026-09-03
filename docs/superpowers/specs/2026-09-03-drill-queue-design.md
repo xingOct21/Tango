@@ -132,7 +132,15 @@ if (isDrillCard):
 
 ## 涉及的改动点
 
-**只有 `templates/index.html`。**
+> **实现后修订**：下面这句「只有 `templates/index.html`」在实现时被有意推翻。
+> 纯逻辑抽到了 `static/drill.js`（UMD-lite 尾巴，浏览器挂 `window.Drill`、Node 里
+> `require` 同一份文件），因为内联在 `index.html` 的脚本没法被 Node require，
+> 塞在里面就等于放弃自动化测试。实际落地四个文件：`static/drill.js`（新）、
+> `tests/test_drill.js`（新）、`templates/index.html`、`.github/workflows/tests.yml`
+> （新增 `drill-logic` job）。
+> **后端与数据库仍是零改动、无迁移**，这一点没变。
+
+**前端接线只有 `templates/index.html`。**
 
 1. **JS 状态**：新增 `drill`（按 book 的练习表）、`isDrillCard`（当前牌来源）；新增
    `drillKey(book)` / `loadDrill()` / `saveDrill()`，跨天失效逻辑参照 `isExtendedToday()`
@@ -153,7 +161,11 @@ if (isDrillCard):
 
 ## 已知风险
 
-1. **前端无自动化测试**。drill 逻辑靠手工验证；用纯函数边界降低将来补测试的成本。
+1. ~~**前端无自动化测试**~~ —— **已部分解决**。纯逻辑（`static/drill.js`）有
+   `tests/test_drill.js` 覆盖，含反向断言，已进 CI。**仍未覆盖的是 DOM 接线层**
+   （`loadNext` / `score` / `showDrillCard`），那部分只能靠下面「测试关注点」的手工清单。
+   这和仓库既有做法一致：`tests/test_srs_flow.py` 同样只测后端逻辑，不测 Flask 路由接线。
+   不引入 jsdom / vitest / Playwright —— 对一个零构建步骤的个人项目，代价不成比例。
 2. **localStorage 可能写失败**（隐私模式、配额满）。所有读写包 `try/catch`，失败时
    降级为纯内存——刷新会丢练习队列，但不会白屏。
 3. **词条内容当天被改**（编辑 `word.md`）时，drill 里是快照，会显示旧内容。跨天即消失，

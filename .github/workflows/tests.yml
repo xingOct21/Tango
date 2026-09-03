@@ -1,4 +1,4 @@
-# SRS 长周期回归测试。纯标准库，不装依赖，几秒跑完。
+# 回归测试。纯标准库/内置模块，不装依赖，几秒跑完。
 # 它挡的是 DEVLOG v2.4 那类 bug：每段代码单独看都对，但组合起来跑一个月才失效。
 name: tests
 
@@ -16,3 +16,13 @@ jobs:
           python-version: "3.12"    # 与 runtime.txt 保持一致
       - name: 斩词全流程 + 反向断言
         run: python tests/test_srs_flow.py
+
+  drill-logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: 本轮练习队列 + 反向断言
+        run: node tests/test_drill.js

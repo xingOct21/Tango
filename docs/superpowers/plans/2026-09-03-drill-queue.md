@@ -303,6 +303,15 @@ git commit -m "Add applyDrillAnswer: only 认识 decrements, 3 misses force-rele
 
 ### Task 3: `tickAndPick` + `pickSoonest` —— 选牌
 
+> **执行后修订**：Task 3 的质量审查提了两条，已在 `927f9a3` 落实，本节下面的原始代码块
+> 保留为当时的规格记录，**实际代码与之有两处差异**：
+> 1. `pickSoonest` 更名为 **`pickLongestWaiting`** —— 它取的是 countdown 最小、也就是
+>    等最久/逾期最深的那个，而 "soonest" 读起来像「最快要到期的」，正好相反。
+> 2. 抽出内部辅助 `cloneItem(it)`（不导出），`applyDrillAnswer` 和 `tickAndPick` 不再各自
+>    手抄同样 5 个字段 —— 以后加字段漏改一处就是静默丢数据。
+>
+> 后续 Task 4、Task 8 已按新名字更新，见各自章节。
+
 **Files:**
 - Modify: `static/drill.js`
 - Test: `tests/test_drill.js`（新增 `testPicking`）
@@ -488,7 +497,7 @@ Expected: FAIL — `TypeError: Drill.saveDrill is not a function`
 
 - [ ] **Step 3: 写最小实现**
 
-在 `static/drill.js` 的 `pickSoonest` 之后插入：
+在 `static/drill.js` 的 `pickLongestWaiting`（Task 3 中由 `pickSoonest` 更名而来）之后插入：
 
 ```js
   function drillKey(book) {
@@ -844,7 +853,7 @@ git commit -m "Load drill.js, add drill state, extract renderLevelBar"
       if (data.done) {
         // 额度用完时不能直接 done，否则点过「模糊」的词会凭空消失：
         // 用户既没答对它、当天也再见不到它。先把练习队列放完。
-        const fallback = Drill.pickSoonest(drill);
+        const fallback = Drill.pickLongestWaiting(drill);
         if (fallback) {
           showDrillCard(fallback);
           return;
