@@ -293,6 +293,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='katex/katex.min.css') }}">
   <script src="{{ url_for('static', filename='katex/katex.min.js') }}"></script>
   <script src="{{ url_for('static', filename='katex/auto-render.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='drill.js') }}"></script>
 </head>
 <body>
   <button id="exit-mode-btn" onclick="exitCurrentMode()"></button>
@@ -349,6 +350,19 @@
     let freeReviewIndex = 0;
     let currentBook = localStorage.getItem("tango_book") || "jp";
 
+    // 本轮练习队列：当天点了「模糊」/「不认识」的词随机重现，答对才放走。
+    // 纯逻辑在 static/drill.js，这里只管状态和渲染。
+    let drill = {};
+    let isDrillCard = false;
+
+    function reloadDrill() {
+      drill = Drill.loadDrill(currentBook, todayStr(), localStorage);
+    }
+
+    function persistDrill() {
+      Drill.saveDrill(currentBook, todayStr(), drill, localStorage);
+    }
+
     function updateBookSwitch() {
       document.querySelectorAll(".book-btn").forEach((btn) => {
         btn.classList.toggle("active", btn.dataset.book === currentBook);
@@ -363,6 +377,7 @@
       isFreeReview = false;
       freeReviewList = [];
       freeReviewIndex = 0;
+      reloadDrill();
       updateBookSwitch();
       loadNext();
     }
@@ -479,16 +494,20 @@
       renderText(document.getElementById("answer"), data.zh);
       document.getElementById("section-tag").textContent = data.section;
 
+      renderLevelBar(data.level);
+
+      document.getElementById("stats").textContent =
+        `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
+    }
+
+    function renderLevelBar(level) {
       const bar = document.getElementById("level-bar");
       bar.innerHTML = "";
       for (let i = 0; i < 5; i++) {
         const d = document.createElement("div");
-        d.className = "dot" + (i < data.level ? " filled" : "");
+        d.className = "dot" + (i < level ? " filled" : "");
         bar.appendChild(d);
       }
-
-      document.getElementById("stats").textContent =
-        `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
     }
 
     function flip() {
