@@ -10,6 +10,7 @@
  */
 const assert = require("assert");
 const path = require("path");
+const fs = require("fs");
 
 const DRILL_JS = path.join(__dirname, "..", "static", "drill.js");
 const Drill = require(DRILL_JS);
@@ -211,11 +212,76 @@ function testStorage() {
   console.log("PASS  loadDrill / saveDrill");
 }
 
+// 把一次完整的练习过程跑完，返回「练了几次」。
+// scores 的第一个元素是首次点击（决定档位），其余是练习卡上的点击。
+function runScenario(scores, DrillMod) {
+  const M = DrillMod || Drill;
+  let item = M.createDrillItem(WORD, scores[0], ALWAYS_MIN);
+  if (!item) return { drills: 0, released: "immediate" };
+  let drills = 0;
+  for (let i = 1; i < scores.length; i++) {
+    drills++;
+    item = M.applyDrillAnswer(item, scores[i], ALWAYS_MIN);
+    if (!item) return { drills: drills, released: "yes" };
+  }
+  return { drills: drills, released: "no" };
+}
+
+const 认识 = 3, 模糊 = 2, 不认识 = 1;
+
+function testScenarios() {
+  // 设计文档「行为验算」那张表，逐行断言
+  assert.deepStrictEqual(runScenario([认识]),
+    { drills: 0, released: "immediate" }, "认识 → 不进队列");
+  assert.deepStrictEqual(runScenario([模糊, 认识]),
+    { drills: 1, released: "yes" }, "模糊 → 认识：练 1 次自然放走");
+  assert.deepStrictEqual(runScenario([模糊, 模糊, 模糊, 模糊]),
+    { drills: 3, released: "yes" }, "模糊 → 连续 3 次没答对：逃生放走");
+  assert.deepStrictEqual(runScenario([不认识, 认识, 认识]),
+    { drills: 2, released: "yes" }, "不认识 → 答对 2 次自然放走");
+  assert.deepStrictEqual(runScenario([不认识, 模糊, 模糊, 模糊]),
+    { drills: 3, released: "yes" }, "不认识 → 连续 3 次没答对：逃生放走");
+  assert.deepStrictEqual(runScenario([不认识, 认识, 模糊, 模糊, 模糊]),
+    { drills: 4, released: "yes" },
+    "不认识 → 认识清零连败后，需要重新连败 3 次才逃生（最长练 5 次的那条路径）");
+
+  // 「不认识」必须比「模糊」难放走，否则 remaining=2 这档设计就白设了
+  assert.strictEqual(runScenario([模糊, 认识]).released, "yes");
+  assert.strictEqual(runScenario([不认识, 认识]).released, "no",
+    "同样答对 1 次，「模糊」该放走而「不认识」不该——两档必须有区别");
+
+  console.log("PASS  场景回归");
+}
+
+// 反向断言：把逃生阈值改掉，上面的逃生场景必须不再成立。
+// 否则这个测试测的是它自己，而不是代码（DEVLOG v2.2 的教训）。
+function testReverseAssertion() {
+  const src = fs.readFileSync(DRILL_JS, "utf8");
+  const NEEDLE = "var MISS_STREAK_LIMIT = 3;";
+  assert.ok(src.includes(NEEDLE),
+    "找不到逃生阈值的声明，反向断言已失效，请同步更新 NEEDLE");
+  const mutated = src.replace(NEEDLE, "var MISS_STREAK_LIMIT = 99;");
+
+  const fake = { exports: {} };
+  new Function("module", "exports", mutated)(fake, fake.exports);
+  const Broken = fake.exports;
+  assert.strictEqual(Broken.MISS_STREAK_LIMIT, 99, "变异没生效");
+
+  const r = runScenario([模糊, 模糊, 模糊, 模糊], Broken);
+  assert.strictEqual(r.released, "no",
+    "把逃生阈值提到 99 之后，连败 3 次竟然仍会放走——" +
+    "说明放走是别的原因造成的，本测试对逃生口没有鉴别力，需要重新设计场景");
+
+  console.log("PASS  反向断言（逃生阈值确实在起作用）");
+}
+
 function main() {
   testCreateDrillItem();
   testApplyDrillAnswer();
   testPicking();
   testStorage();
+  testScenarios();
+  testReverseAssertion();
   console.log("\n全部通过");
 }
 
