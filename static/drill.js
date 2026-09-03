@@ -33,10 +33,38 @@
     };
   }
 
+  // 连续这么多次没答对就强制放走。没有这个口子，一个始终记不住的词
+  // 会在本轮无限循环，done 永远不来。
+  var MISS_STREAK_LIMIT = 3;
+
+  // 返回新的 item；返回 null 表示这个词被放走了，调用方应把它从队列删掉。
+  // 只有「认识」减 remaining —— 模糊/不认识不改变它，这是需求明确要的。
+  function applyDrillAnswer(item, score, rng) {
+    var next = {
+      word: item.word,
+      kind: item.kind,
+      remaining: item.remaining,
+      missStreak: item.missStreak,
+      countdown: item.countdown,
+    };
+    if (score === 3) {
+      next.remaining -= 1;
+      next.missStreak = 0;
+    } else {
+      next.missStreak += 1;
+    }
+    if (next.remaining <= 0 || next.missStreak >= MISS_STREAK_LIMIT) return null;
+    var cfg = DRILL_KINDS[next.kind];
+    next.countdown = randInt(cfg.minGap, cfg.maxGap, rng);
+    return next;
+  }
+
   var api = {
     DRILL_KINDS: DRILL_KINDS,
+    MISS_STREAK_LIMIT: MISS_STREAK_LIMIT,
     randInt: randInt,
     createDrillItem: createDrillItem,
+    applyDrillAnswer: applyDrillAnswer,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

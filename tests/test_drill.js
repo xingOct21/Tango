@@ -49,8 +49,58 @@ function testCreateDrillItem() {
   console.log("PASS  createDrillItem");
 }
 
+function testApplyDrillAnswer() {
+  const fuzzy = Drill.createDrillItem(WORD, 2, ALWAYS_MIN);   // remaining 1
+  const unknown = Drill.createDrillItem(WORD, 1, ALWAYS_MIN); // remaining 2
+
+  // 认识 → remaining 减 1；减到 0 就放走（返回 null）
+  assert.strictEqual(Drill.applyDrillAnswer(fuzzy, 3, ALWAYS_MIN), null,
+    "「模糊」的词答对 1 次就该被放走");
+
+  const afterOne = Drill.applyDrillAnswer(unknown, 3, ALWAYS_MIN);
+  assert.strictEqual(afterOne.remaining, 1, "「不认识」答对 1 次后还剩 1 次");
+  assert.strictEqual(Drill.applyDrillAnswer(afterOne, 3, ALWAYS_MIN), null,
+    "「不认识」答对第 2 次才放走");
+
+  // 模糊/不认识 → remaining 纹丝不动（这是有意的，不是遗漏）
+  const missed = Drill.applyDrillAnswer(unknown, 2, ALWAYS_MIN);
+  assert.strictEqual(missed.remaining, 2,
+    "练习中点「模糊」不能改变 remaining——只有「认识」才减");
+  assert.strictEqual(Drill.applyDrillAnswer(unknown, 1, ALWAYS_MIN).remaining, 2,
+    "练习中点「不认识」同样不能改变 remaining");
+
+  // 逃生口：连续 3 次没答对就强制放走
+  let item = unknown;
+  item = Drill.applyDrillAnswer(item, 2, ALWAYS_MIN);
+  assert.strictEqual(item.missStreak, 1);
+  item = Drill.applyDrillAnswer(item, 1, ALWAYS_MIN);
+  assert.strictEqual(item.missStreak, 2, "连败 2 次还不该放走");
+  assert.strictEqual(Drill.applyDrillAnswer(item, 2, ALWAYS_MIN), null,
+    "连续 3 次没答对必须强制放走，否则始终记不住的词会无限循环、done 永远不来");
+
+  // 答对一次把连败清零
+  let streaked = Drill.applyDrillAnswer(unknown, 2, ALWAYS_MIN);
+  streaked = Drill.applyDrillAnswer(streaked, 2, ALWAYS_MIN);
+  assert.strictEqual(streaked.missStreak, 2);
+  const reset = Drill.applyDrillAnswer(streaked, 3, ALWAYS_MIN);
+  assert.strictEqual(reset.missStreak, 0, "点一次「认识」必须把连败计数清零");
+  assert.strictEqual(reset.remaining, 1);
+
+  // 没被放走的项要重新排队，间隔仍按初始档位算（不随 remaining 变）
+  assert.strictEqual(missed.countdown, 2,
+    "「不认识」重排间隔应始终用 unknown 档位的下界 2，而不是切到 fuzzy 的 4");
+  assert.strictEqual(Drill.applyDrillAnswer(unknown, 2, ALWAYS_MAX).countdown, 3);
+
+  // 不能就地改原对象——调用方靠返回值决定去留
+  assert.strictEqual(unknown.missStreak, 0,
+    "applyDrillAnswer 必须返回新对象，不能修改传入的 item");
+
+  console.log("PASS  applyDrillAnswer");
+}
+
 function main() {
   testCreateDrillItem();
+  testApplyDrillAnswer();
   console.log("\n全部通过");
 }
 
