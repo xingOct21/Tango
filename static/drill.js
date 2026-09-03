@@ -91,6 +91,51 @@
     });
   }
 
+  function drillKey(book) {
+    return "tango_drill_" + book;
+  }
+
+  // localStorage 里的东西可能被手改、被旧版本写坏，或者 JSON 往返把 NaN 变成 null。
+  // 形状不对的项必须在入口就丢掉：countdown 一旦不是数字，`countdown <= 0` 恒为
+  // false，这个词永远排不进到期队列；而 pickLongestWaiting 的比较在这种值下又可能
+  // 把它选中，接着渲染 item.word.jp 就崩。宁可丢一条练习记录，也不能让整轮学习卡死。
+  function isValidItem(it) {
+    return !!it
+      && !!it.word && typeof it.word.jp === "string"
+      && Object.prototype.hasOwnProperty.call(DRILL_KINDS, it.kind)
+      && typeof it.remaining === "number" && it.remaining > 0
+      && typeof it.missStreak === "number" && it.missStreak >= 0
+      && typeof it.countdown === "number" && isFinite(it.countdown);
+  }
+
+  // 跨天自动失效：存的 date 不是今天就整个丢弃（「本轮」= 今天）。
+  // localStorage 在隐私模式 / 配额满时会抛，抛了就当空队列——
+  // 宁可丢练习队列，也不能让打分流程中断、页面卡死。
+  function loadDrill(book, today, storage) {
+    try {
+      var raw = storage.getItem(drillKey(book));
+      if (!raw) return {};
+      var parsed = JSON.parse(raw);
+      if (!parsed || parsed.date !== today) return {};
+      var items = parsed.items || {};
+      var clean = {};
+      Object.keys(items).forEach(function (jp) {
+        if (isValidItem(items[jp])) clean[jp] = items[jp];
+      });
+      return clean;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveDrill(book, today, items, storage) {
+    try {
+      storage.setItem(drillKey(book), JSON.stringify({ date: today, items: items }));
+    } catch (e) {
+      // 降级为纯内存：刷新会丢练习队列，但不会白屏
+    }
+  }
+
   var api = {
     DRILL_KINDS: DRILL_KINDS,
     MISS_STREAK_LIMIT: MISS_STREAK_LIMIT,
@@ -99,6 +144,9 @@
     applyDrillAnswer: applyDrillAnswer,
     tickAndPick: tickAndPick,
     pickLongestWaiting: pickLongestWaiting,
+    drillKey: drillKey,
+    loadDrill: loadDrill,
+    saveDrill: saveDrill,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

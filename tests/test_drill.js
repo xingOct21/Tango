@@ -142,10 +142,78 @@ function testPicking() {
   console.log("PASS  tickAndPick / pickLongestWaiting");
 }
 
+// 假 localStorage：Node 里没有，测试自己造一个。
+function fakeStorage(initial) {
+  const data = Object.assign({}, initial);
+  return {
+    data: data,
+    getItem: (k) => (k in data ? data[k] : null),
+    setItem: (k, v) => { data[k] = v; },
+  };
+}
+
+// 会抛异常的 storage：模拟隐私模式 / 配额满
+function throwingStorage() {
+  return {
+    getItem: () => { throw new Error("SecurityError"); },
+    setItem: () => { throw new Error("QuotaExceededError"); },
+  };
+}
+
+function testStorage() {
+  const TODAY = "2026-09-03";
+  const item = Drill.createDrillItem(WORD, 1, ALWAYS_MIN);
+
+  // 存 → 取，原样回来
+  const s = fakeStorage();
+  Drill.saveDrill("jp", TODAY, { "間抜け": item }, s);
+  assert.deepStrictEqual(Drill.loadDrill("jp", TODAY, s), { "間抜け": item });
+
+  // 按 book 分开存，互不干扰（和现有的 tango_extended_<book> 一个路数）
+  assert.deepStrictEqual(Drill.loadDrill("en", TODAY, s), {},
+    "日语的练习队列不能被英语本读到");
+  assert.ok("tango_drill_jp" in s.data, "localStorage 键名应为 tango_drill_<book>");
+
+  // 跨天自动失效
+  assert.deepStrictEqual(Drill.loadDrill("jp", "2026-09-04", s), {},
+    "「本轮」= 今天，跨天必须清空练习队列");
+
+  // 没存过 / 存了垃圾 → 空队列，不抛
+  assert.deepStrictEqual(Drill.loadDrill("jp", TODAY, fakeStorage()), {});
+  assert.deepStrictEqual(
+    Drill.loadDrill("jp", TODAY, fakeStorage({ "tango_drill_jp": "不是 JSON" })), {},
+    "存储里是坏数据时应当降级为空队列，而不是让整个页面抛异常");
+
+  // storage 本身抛异常（隐私模式）→ 降级为纯内存，不能白屏
+  assert.deepStrictEqual(Drill.loadDrill("jp", TODAY, throwingStorage()), {});
+  assert.doesNotThrow(
+    () => Drill.saveDrill("jp", TODAY, { "間抜け": item }, throwingStorage()),
+    "localStorage 写失败时必须静默降级，不能让打分流程中断");
+
+  // 形状不对的练习项必须在入口丢掉
+  const dirty = fakeStorage({
+    "tango_drill_jp": JSON.stringify({ date: TODAY, items: {
+      good: item,
+      noCountdown: { word: WORD, kind: "fuzzy", remaining: 1, missStreak: 0 },
+      nanCountdown: { word: WORD, kind: "fuzzy", remaining: 1, missStreak: 0, countdown: null },
+      noWord: { kind: "fuzzy", remaining: 1, missStreak: 0, countdown: 3 },
+      badKind: { word: WORD, kind: "typo", remaining: 1, missStreak: 0, countdown: 3 },
+      spent: { word: WORD, kind: "fuzzy", remaining: 0, missStreak: 0, countdown: 3 },
+    } }),
+  });
+  assert.deepStrictEqual(Object.keys(Drill.loadDrill("jp", TODAY, dirty)), ["good"],
+    "形状不对的练习项必须在 loadDrill 入口丢掉：countdown 不是数字的话，"
+    + "NaN <= 0 恒为 false，这个词永远排不到队，却又可能被 pickLongestWaiting 选中，"
+    + "渲染 item.word.jp 时崩掉");
+
+  console.log("PASS  loadDrill / saveDrill");
+}
+
 function main() {
   testCreateDrillItem();
   testApplyDrillAnswer();
   testPicking();
+  testStorage();
   console.log("\n全部通过");
 }
 
