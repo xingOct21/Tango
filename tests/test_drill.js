@@ -246,7 +246,8 @@ function testScenarios() {
     "不认识 → 认识清零连败后，需要重新连败 3 次才逃生（最长练 5 次的那条路径）");
 
   // 「不认识」必须比「模糊」难放走，否则 remaining=2 这档设计就白设了
-  assert.strictEqual(runScenario([模糊, 认识]).released, "yes");
+  assert.strictEqual(runScenario([模糊, 认识]).released, "yes",
+    "对照组：同样答对 1 次，「模糊」必须放走，下一条断言才有意义");
   assert.strictEqual(runScenario([不认识, 认识]).released, "no",
     "同样答对 1 次，「模糊」该放走而「不认识」不该——两档必须有区别");
 
