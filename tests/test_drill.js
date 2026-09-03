@@ -72,7 +72,7 @@ function testApplyDrillAnswer() {
   // 逃生口：连续 3 次没答对就强制放走
   let item = unknown;
   item = Drill.applyDrillAnswer(item, 2, ALWAYS_MIN);
-  assert.strictEqual(item.missStreak, 1);
+  assert.strictEqual(item.missStreak, 1, "第一次没答对，连败计数应该从 0 变成 1");
   item = Drill.applyDrillAnswer(item, 1, ALWAYS_MIN);
   assert.strictEqual(item.missStreak, 2, "连败 2 次还不该放走");
   assert.strictEqual(Drill.applyDrillAnswer(item, 2, ALWAYS_MIN), null,
@@ -81,15 +81,16 @@ function testApplyDrillAnswer() {
   // 答对一次把连败清零
   let streaked = Drill.applyDrillAnswer(unknown, 2, ALWAYS_MIN);
   streaked = Drill.applyDrillAnswer(streaked, 2, ALWAYS_MIN);
-  assert.strictEqual(streaked.missStreak, 2);
+  assert.strictEqual(streaked.missStreak, 2, "连续两次没答对，连败计数应该累计到 2");
   const reset = Drill.applyDrillAnswer(streaked, 3, ALWAYS_MIN);
   assert.strictEqual(reset.missStreak, 0, "点一次「认识」必须把连败计数清零");
-  assert.strictEqual(reset.remaining, 1);
+  assert.strictEqual(reset.remaining, 1, "「认识」在清零连败的同时也要把 remaining 减 1");
 
   // 没被放走的项要重新排队，间隔仍按初始档位算（不随 remaining 变）
   assert.strictEqual(missed.countdown, 2,
     "「不认识」重排间隔应始终用 unknown 档位的下界 2，而不是切到 fuzzy 的 4");
-  assert.strictEqual(Drill.applyDrillAnswer(unknown, 2, ALWAYS_MAX).countdown, 3);
+  assert.strictEqual(Drill.applyDrillAnswer(unknown, 2, ALWAYS_MAX).countdown, 3,
+    "「不认识」重排间隔的上界应为 3 张");
 
   // 不能就地改原对象——调用方靠返回值决定去留
   assert.strictEqual(unknown.missStreak, 0,
