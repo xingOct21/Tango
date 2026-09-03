@@ -344,6 +344,8 @@
   </div>
 
   <script>
+    // current 有三种形态：普通卡是 /api/next 的完整响应，练习卡是 drill 里的 word
+    // 快照，自由复习是词表条目。跨三种形态只有 .jp 有保证，别指望别的字段。
     let current = null;
     let isFreeReview = false;
     let freeReviewList = [];
@@ -482,6 +484,18 @@
         `练习中 · 还需答对 ${item.remaining} 次`;
     }
 
+    function showDoneScreen(data) {
+      const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
+      const head = data.reason === "daily_limit"
+        ? "今天的额度已用完！"
+        : "所有到期单词复习完了！";
+
+      showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>`);
+      document.getElementById("flip-btn").style.display = "none";
+      document.getElementById("stats").textContent = "";
+      document.getElementById("done-actions").style.display = "flex";
+    }
+
     async function loadNext() {
       updateExitButton();
 
@@ -516,15 +530,8 @@
           return;
         }
 
-        const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
-        const head = data.reason === "daily_limit"
-          ? "今天的额度已用完！"
-          : "所有到期单词复习完了！";
-
-        showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>`);
-        document.getElementById("flip-btn").style.display = "none";
-        document.getElementById("stats").textContent = "";
-        document.getElementById("done-actions").style.display = "flex";
+        isDrillCard = false;
+        showDoneScreen(data);
         return;
       }
 
@@ -562,6 +569,17 @@
         return;
       }
 
+      // 练习卡：不调任何接口。熟练度只由首次点击决定，这里一概不动。
+      if (isDrillCard) {
+        const jp = current.jp;
+        const next = Drill.applyDrillAnswer(drill[jp], s, Math.random);
+        if (next) drill[jp] = next;
+        else delete drill[jp];   // remaining 归零或连败 3 次 —— 放走
+        persistDrill();
+        loadNext();
+        return;
+      }
+
       const res = await fetch("/api/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -578,6 +596,22 @@
             body: JSON.stringify({ jp: current.jp, book: currentBook }),
           });
         }
+      }
+
+      // 首次点「模糊」/「不会」才进练习队列。level 必须用 /api/review 返回的
+      // 新等级，不能用 current.level（那是打分前的旧值）——否则点了「不会」的词
+      // 在练习卡上会显示比实际高一级。
+      // reached_max_level 只在 s === 3 时为真，斩词和建练习项不会同时发生。
+      const item = Drill.createDrillItem({
+        jp: current.jp,
+        kana: current.kana,
+        zh: current.zh,
+        section: current.section,
+        level: data.level,
+      }, s, Math.random);
+      if (item) {
+        drill[current.jp] = item;
+        persistDrill();
       }
 
       loadNext();
