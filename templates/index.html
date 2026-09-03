@@ -460,6 +460,16 @@
       loadNext();
     }
 
+    // 练习卡和后端卡的正面渲染完全一样，只有 #section-tag 的内容不同
+    // （练习卡显示进度，普通卡显示章节），所以那一行留在各自的调用处。
+    function renderWordFace(word) {
+      renderText(document.getElementById("jp"), word.jp);
+      renderText(document.getElementById("kana"), word.kana || "");
+      document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
+      renderText(document.getElementById("answer"), word.zh);
+      renderLevelBar(word.level);
+    }
+
     // 练习卡完全靠 drill 里的快照渲染——后端今天不会再发这个词。
     // 和普通卡的区别只有两处：section 位置显示进度、不更新 stats（练习不计入额度）。
     function showDrillCard(jp) {
@@ -467,14 +477,9 @@
       isDrillCard = true;
       current = item.word;
       showWordFace();
-      renderText(document.getElementById("jp"), item.word.jp);
-      renderText(document.getElementById("kana"), item.word.kana || "");
-      document.getElementById("kana").style.display =
-        currentBook === "en" ? "none" : "block";
-      renderText(document.getElementById("answer"), item.word.zh);
+      renderWordFace(item.word);
       document.getElementById("section-tag").textContent =
         `练习中 · 还需答对 ${item.remaining} 次`;
-      renderLevelBar(item.word.level);
     }
 
     async function loadNext() {
@@ -526,12 +531,8 @@
       isDrillCard = false;
       showWordFace();
       current = data;
-      renderText(document.getElementById("jp"), data.jp);
-      renderText(document.getElementById("kana"), data.kana || "");
-      document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
-      renderText(document.getElementById("answer"), data.zh);
+      renderWordFace(data);
       document.getElementById("section-tag").textContent = data.section;
-      renderLevelBar(data.level);
 
       document.getElementById("stats").textContent =
         `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
