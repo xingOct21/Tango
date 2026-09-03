@@ -601,7 +601,10 @@
       // 首次点「模糊」/「不会」才进练习队列。level 必须用 /api/review 返回的
       // 新等级，不能用 current.level（那是打分前的旧值）——否则点了「不会」的词
       // 在练习卡上会显示比实际高一级。
-      // reached_max_level 只在 s === 3 时为真，斩词和建练习项不会同时发生。
+      // 注意斩词弹窗和建练习项**可能同时发生**：score 2 时 app.py 让 new_level
+      // 保持不变，所以一个本来就满级的词被点「模糊」，reached_max_level 仍为真。
+      // 这种情况下两件事都做是对的 —— 用户说了模糊，当天就该再练一遍，
+      // 而练习项当天过期，不影响斩掉之后的长期状态。
       const item = Drill.createDrillItem({
         jp: current.jp,
         kana: current.kana,
