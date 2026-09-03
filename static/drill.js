@@ -59,12 +59,45 @@
     return next;
   }
 
+  // 每出一张牌调一次：所有项 countdown 减 1，然后从到期的里随机挑一个。
+  // 返回 { items, pickedJp }；pickedJp 为 null 表示这一轮该去问后端要词。
+  function tickAndPick(items, rng) {
+    var next = {};
+    var due = [];
+    Object.keys(items).forEach(function (jp) {
+      var it = items[jp];
+      next[jp] = {
+        word: it.word,
+        kind: it.kind,
+        remaining: it.remaining,
+        missStreak: it.missStreak,
+        countdown: it.countdown - 1,
+      };
+      if (next[jp].countdown <= 0) due.push(jp);
+    });
+    if (!due.length) return { items: next, pickedJp: null };
+    var idx = Math.floor((rng || Math.random)() * due.length);
+    return { items: next, pickedJp: due[idx] };
+  }
+
+  // 额度用完、后端说 done，但队列还有词时的兜底：等最久的（countdown 最小）先出。
+  // 没有这一步，点过「模糊」的词会在额度耗尽的瞬间凭空消失。
+  function pickSoonest(items) {
+    var keys = Object.keys(items);
+    if (!keys.length) return null;
+    return keys.reduce(function (a, b) {
+      return items[a].countdown <= items[b].countdown ? a : b;
+    });
+  }
+
   var api = {
     DRILL_KINDS: DRILL_KINDS,
     MISS_STREAK_LIMIT: MISS_STREAK_LIMIT,
     randInt: randInt,
     createDrillItem: createDrillItem,
     applyDrillAnswer: applyDrillAnswer,
+    tickAndPick: tickAndPick,
+    pickSoonest: pickSoonest,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

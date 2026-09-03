@@ -99,9 +99,53 @@ function testApplyDrillAnswer() {
   console.log("PASS  applyDrillAnswer");
 }
 
+function testPicking() {
+  // 每出一张牌所有项 countdown 减 1；没到期就返回 null，让调用方去问后端
+  const items = {
+    a: { word: WORD, kind: "unknown", remaining: 2, missStreak: 0, countdown: 2 },
+    b: { word: WORD, kind: "fuzzy", remaining: 1, missStreak: 0, countdown: 5 },
+  };
+  const t1 = Drill.tickAndPick(items, ALWAYS_MIN);
+  assert.strictEqual(t1.pickedJp, null, "都没到期时不该出练习卡");
+  assert.strictEqual(t1.items.a.countdown, 1);
+  assert.strictEqual(t1.items.b.countdown, 4);
+  assert.strictEqual(items.a.countdown, 2,
+    "tickAndPick 必须返回新对象，不能修改传入的 items");
+
+  // countdown 减到 0 就到期
+  const t2 = Drill.tickAndPick(t1.items, ALWAYS_MIN);
+  assert.strictEqual(t2.pickedJp, "a", "countdown 归零的项应该被选中出牌");
+  assert.strictEqual(t2.items.a.countdown, 0);
+
+  // 多个同时到期 → 按 rng 随机挑，不是永远挑第一个
+  const both = {
+    a: { word: WORD, kind: "unknown", remaining: 1, missStreak: 0, countdown: 1 },
+    b: { word: WORD, kind: "fuzzy", remaining: 1, missStreak: 0, countdown: 1 },
+  };
+  assert.strictEqual(Drill.tickAndPick(both, ALWAYS_MIN).pickedJp, "a");
+  assert.strictEqual(Drill.tickAndPick(both, ALWAYS_MAX).pickedJp, "b",
+    "多个练习项同时到期时必须随机挑，否则永远只练排在前面的那个");
+
+  // 空队列
+  const empty = Drill.tickAndPick({}, ALWAYS_MIN);
+  assert.strictEqual(empty.pickedJp, null);
+  assert.deepStrictEqual(empty.items, {});
+
+  // pickSoonest：额度用完时的兜底，等最久的（countdown 最小，可能是负数）先出
+  assert.strictEqual(Drill.pickSoonest({}), null, "空队列没有兜底可出");
+  assert.strictEqual(Drill.pickSoonest({
+    a: { countdown: 3 },
+    b: { countdown: -2 },
+    c: { countdown: 1 },
+  }), "b", "兜底应该出等得最久的那个（countdown 最小）");
+
+  console.log("PASS  tickAndPick / pickSoonest");
+}
+
 function main() {
   testCreateDrillItem();
   testApplyDrillAnswer();
+  testPicking();
   console.log("\n全部通过");
 }
 
