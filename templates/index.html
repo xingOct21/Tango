@@ -460,20 +460,57 @@
       loadNext();
     }
 
+    // 练习卡完全靠 drill 里的快照渲染——后端今天不会再发这个词。
+    // 和普通卡的区别只有两处：section 位置显示进度、不更新 stats（练习不计入额度）。
+    function showDrillCard(jp) {
+      const item = drill[jp];
+      isDrillCard = true;
+      current = item.word;
+      showWordFace();
+      renderText(document.getElementById("jp"), item.word.jp);
+      renderText(document.getElementById("kana"), item.word.kana || "");
+      document.getElementById("kana").style.display =
+        currentBook === "en" ? "none" : "block";
+      renderText(document.getElementById("answer"), item.word.zh);
+      document.getElementById("section-tag").textContent =
+        `练习中 · 还需答对 ${item.remaining} 次`;
+      renderLevelBar(item.word.level);
+    }
+
     async function loadNext() {
       updateExitButton();
+
+      // 卡片外观先复位，两条出牌路径（练习卡 / 后端卡）都要用；
+      // 提到网络请求之前也顺带避免了加载期间残留上一张的按钮状态。
+      document.getElementById("score-btns").style.display = "none";
+      document.getElementById("answer").style.display = "none";
+      document.getElementById("flip-btn").style.display = "block";
+      document.getElementById("done-actions").style.display = "none";
+
+      // 每出一张牌，练习队列整体前进一格；有到期的就优先出练习卡
+      const ticked = Drill.tickAndPick(drill, Math.random);
+      drill = ticked.items;
+      persistDrill();
+      if (ticked.pickedJp) {
+        showDrillCard(ticked.pickedJp);
+        return;
+      }
+
       const extended = isExtendedToday();
       const params = new URLSearchParams({ book: currentBook });
       if (extended) params.set("extended", "1");
       const res = await fetch("/api/next?" + params.toString());
       const data = await res.json();
 
-      document.getElementById("score-btns").style.display = "none";
-      document.getElementById("answer").style.display = "none";
-      document.getElementById("flip-btn").style.display = "block";
-      document.getElementById("done-actions").style.display = "none";
-
       if (data.done) {
+        // 额度用完时不能直接 done，否则点过「模糊」的词会凭空消失：
+        // 用户既没答对它、当天也再见不到它。先把练习队列放完。
+        const fallback = Drill.pickLongestWaiting(drill);
+        if (fallback) {
+          showDrillCard(fallback);
+          return;
+        }
+
         const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
         const head = data.reason === "daily_limit"
           ? "今天的额度已用完！"
@@ -486,6 +523,7 @@
         return;
       }
 
+      isDrillCard = false;
       showWordFace();
       current = data;
       renderText(document.getElementById("jp"), data.jp);
@@ -493,7 +531,6 @@
       document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
       renderText(document.getElementById("answer"), data.zh);
       document.getElementById("section-tag").textContent = data.section;
-
       renderLevelBar(data.level);
 
       document.getElementById("stats").textContent =
@@ -619,6 +656,7 @@
 
     localStorage.removeItem("tango_extended_date");  // 清掉分本之前的旧 key
     updateBookSwitch();
+    reloadDrill();
     loadNext();
   </script>
 </body>
