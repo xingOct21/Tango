@@ -356,9 +356,14 @@
     // 纯逻辑在 static/drill.js，这里只管状态和渲染。
     let drill = {};
     let isDrillCard = false;
+    // 内存里这份队列属于哪一天。persistDrill 每出一张牌就用当下日期回写一次，
+    // 所以标签页开着过午夜、再答一张卡，昨天的队列会被重新戳上今天的日期，
+    // loadDrill 的跨天失效从此永远不触发。记下装载日，在 loadNext 里比一次。
+    let drillDay = todayStr();
 
     function reloadDrill() {
       drill = Drill.loadDrill(currentBook, todayStr(), localStorage);
+      drillDay = todayStr();
     }
 
     function persistDrill() {
@@ -505,6 +510,10 @@
       document.getElementById("answer").style.display = "none";
       document.getElementById("flip-btn").style.display = "block";
       document.getElementById("done-actions").style.display = "none";
+
+      // 跨过午夜就换成新一天的空队列。不查这一下的话，persistDrill 会把昨天的
+      // 练习项一路续命到今天 ——「本轮 = 今天」就成了空话。
+      if (todayStr() !== drillDay) reloadDrill();
 
       // 每出一张牌，练习队列整体前进一格；有到期的就优先出练习卡
       const ticked = Drill.tickAndPick(drill, Math.random);
