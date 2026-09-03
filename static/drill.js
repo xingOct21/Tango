@@ -19,6 +19,18 @@
     return min + Math.floor((rng || Math.random)() * (max - min + 1));
   }
 
+  // DrillItem 的浅拷贝。applyDrillAnswer 和 tickAndPick 都要「改一份新的、
+  // 不动传入的那份」，字段列表写两遍的话，以后加字段漏改一处就是静默丢数据。
+  function cloneItem(it) {
+    return {
+      word: it.word,
+      kind: it.kind,
+      remaining: it.remaining,
+      missStreak: it.missStreak,
+      countdown: it.countdown,
+    };
+  }
+
   // score: 1=不认识 2=模糊 3=认识。「认识」不进队列，返回 null。
   function createDrillItem(word, score, rng) {
     var kind = score === 1 ? "unknown" : score === 2 ? "fuzzy" : null;
@@ -40,13 +52,7 @@
   // 返回新的 item；返回 null 表示这个词被放走了，调用方应把它从队列删掉。
   // 只有「认识」减 remaining —— 模糊/不认识不改变它，这是需求明确要的。
   function applyDrillAnswer(item, score, rng) {
-    var next = {
-      word: item.word,
-      kind: item.kind,
-      remaining: item.remaining,
-      missStreak: item.missStreak,
-      countdown: item.countdown,
-    };
+    var next = cloneItem(item);
     if (score === 3) {
       next.remaining -= 1;
       next.missStreak = 0;
@@ -66,13 +72,8 @@
     var due = [];
     Object.keys(items).forEach(function (jp) {
       var it = items[jp];
-      next[jp] = {
-        word: it.word,
-        kind: it.kind,
-        remaining: it.remaining,
-        missStreak: it.missStreak,
-        countdown: it.countdown - 1,
-      };
+      next[jp] = cloneItem(it);
+      next[jp].countdown -= 1;
       if (next[jp].countdown <= 0) due.push(jp);
     });
     if (!due.length) return { items: next, pickedJp: null };
@@ -82,7 +83,7 @@
 
   // 额度用完、后端说 done，但队列还有词时的兜底：等最久的（countdown 最小）先出。
   // 没有这一步，点过「模糊」的词会在额度耗尽的瞬间凭空消失。
-  function pickSoonest(items) {
+  function pickLongestWaiting(items) {
     var keys = Object.keys(items);
     if (!keys.length) return null;
     return keys.reduce(function (a, b) {
@@ -97,7 +98,7 @@
     createDrillItem: createDrillItem,
     applyDrillAnswer: applyDrillAnswer,
     tickAndPick: tickAndPick,
-    pickSoonest: pickSoonest,
+    pickLongestWaiting: pickLongestWaiting,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = api;

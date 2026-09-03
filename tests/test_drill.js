@@ -131,15 +131,15 @@ function testPicking() {
   assert.strictEqual(empty.pickedJp, null);
   assert.deepStrictEqual(empty.items, {});
 
-  // pickSoonest：额度用完时的兜底，等最久的（countdown 最小，可能是负数）先出
-  assert.strictEqual(Drill.pickSoonest({}), null, "空队列没有兜底可出");
-  assert.strictEqual(Drill.pickSoonest({
+  // pickLongestWaiting：额度用完时的兜底，等最久的（countdown 最小，可能是负数）先出
+  assert.strictEqual(Drill.pickLongestWaiting({}), null, "空队列没有兜底可出");
+  assert.strictEqual(Drill.pickLongestWaiting({
     a: { countdown: 3 },
     b: { countdown: -2 },
     c: { countdown: 1 },
   }), "b", "兜底应该出等得最久的那个（countdown 最小）");
 
-  console.log("PASS  tickAndPick / pickSoonest");
+  console.log("PASS  tickAndPick / pickLongestWaiting");
 }
 
 function main() {
