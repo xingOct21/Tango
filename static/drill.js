@@ -120,10 +120,17 @@
       var items = parsed.items || {};
       var clean = {};
       Object.keys(items).forEach(function (jp) {
-        if (isValidItem(items[jp])) clean[jp] = items[jp];
+        if (isValidItem(items[jp])) {
+          clean[jp] = items[jp];
+        } else {
+          // 静默丢弃正是这个项目栽过跟头的地方（见 DEVLOG：v2.0 的两个按钮
+          // 交付起就没工作过，藏了三个月）。用户看不到这条，devtools 里能看到。
+          console.warn("[drill] 丢弃形状不对的练习项：", book, jp, items[jp]);
+        }
       });
       return clean;
     } catch (e) {
+      console.warn("[drill] 读取练习队列失败，本轮降级为空队列：", e.message);
       return {};
     }
   }
@@ -133,6 +140,7 @@
       storage.setItem(drillKey(book), JSON.stringify({ date: today, items: items }));
     } catch (e) {
       // 降级为纯内存：刷新会丢练习队列，但不会白屏
+      console.warn("[drill] 保存练习队列失败，降级为纯内存：", e.message);
     }
   }
 
@@ -144,7 +152,6 @@
     applyDrillAnswer: applyDrillAnswer,
     tickAndPick: tickAndPick,
     pickLongestWaiting: pickLongestWaiting,
-    drillKey: drillKey,
     loadDrill: loadDrill,
     saveDrill: saveDrill,
   };

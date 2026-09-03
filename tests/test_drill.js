@@ -143,6 +143,8 @@ function testPicking() {
 }
 
 // 假 localStorage：Node 里没有，测试自己造一个。
+// 注意：真的 localStorage 会把 value 强制转成字符串，这个假的不会。
+// 目前无所谓 —— saveDrill 传进去的永远是 JSON.stringify 的结果，本来就是字符串。
 function fakeStorage(initial) {
   const data = Object.assign({}, initial);
   return {
