@@ -293,6 +293,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='katex/katex.min.css') }}">
   <script src="{{ url_for('static', filename='katex/katex.min.js') }}"></script>
   <script src="{{ url_for('static', filename='katex/auto-render.min.js') }}"></script>
+  <script src="{{ url_for('static', filename='drill.js') }}"></script>
 </head>
 <body>
   <button id="exit-mode-btn" onclick="exitCurrentMode()"></button>
@@ -343,11 +344,31 @@
   </div>
 
   <script>
+    // current 有三种形态：普通卡是 /api/next 的完整响应，练习卡是 drill 里的 word
+    // 快照，自由复习是词表条目。跨三种形态只有 .jp 有保证，别指望别的字段。
     let current = null;
     let isFreeReview = false;
     let freeReviewList = [];
     let freeReviewIndex = 0;
     let currentBook = localStorage.getItem("tango_book") || "jp";
+
+    // 本轮练习队列：当天点了「模糊」/「不认识」的词随机重现，答对才放走。
+    // 纯逻辑在 static/drill.js，这里只管状态和渲染。
+    let drill = {};
+    let isDrillCard = false;
+    // 内存里这份队列属于哪一天。persistDrill 每出一张牌就用当下日期回写一次，
+    // 所以标签页开着过午夜、再答一张卡，昨天的队列会被重新戳上今天的日期，
+    // loadDrill 的跨天失效从此永远不触发。记下装载日，在 loadNext 里比一次。
+    let drillDay = todayStr();
+
+    function reloadDrill() {
+      drill = Drill.loadDrill(currentBook, todayStr(), localStorage);
+      drillDay = todayStr();
+    }
+
+    function persistDrill() {
+      Drill.saveDrill(currentBook, todayStr(), drill, localStorage);
+    }
 
     function updateBookSwitch() {
       document.querySelectorAll(".book-btn").forEach((btn) => {
@@ -363,6 +384,7 @@
       isFreeReview = false;
       freeReviewList = [];
       freeReviewIndex = 0;
+      reloadDrill();
       updateBookSwitch();
       loadNext();
     }
@@ -445,50 +467,101 @@
       loadNext();
     }
 
+    // 练习卡和后端卡的正面渲染完全一样，只有 #section-tag 的内容不同
+    // （练习卡显示进度，普通卡显示章节），所以那一行留在各自的调用处。
+    function renderWordFace(word) {
+      renderText(document.getElementById("jp"), word.jp);
+      renderText(document.getElementById("kana"), word.kana || "");
+      document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
+      renderText(document.getElementById("answer"), word.zh);
+      renderLevelBar(word.level);
+    }
+
+    // 练习卡完全靠 drill 里的快照渲染——后端今天不会再发这个词。
+    // 和普通卡的区别只有两处：section 位置显示进度、不更新 stats（练习不计入额度）。
+    function showDrillCard(jp) {
+      const item = drill[jp];
+      isDrillCard = true;
+      current = item.word;
+      showWordFace();
+      renderWordFace(item.word);
+      document.getElementById("section-tag").textContent =
+        `练习中 · 还需答对 ${item.remaining} 次`;
+    }
+
+    function showDoneScreen(data) {
+      const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
+      const head = data.reason === "daily_limit"
+        ? "今天的额度已用完！"
+        : "所有到期单词复习完了！";
+
+      showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>`);
+      document.getElementById("flip-btn").style.display = "none";
+      document.getElementById("stats").textContent = "";
+      document.getElementById("done-actions").style.display = "flex";
+    }
+
     async function loadNext() {
       updateExitButton();
+
+      // 卡片外观先复位，两条出牌路径（练习卡 / 后端卡）都要用；
+      // 提到网络请求之前也顺带避免了加载期间残留上一张的按钮状态。
+      document.getElementById("score-btns").style.display = "none";
+      document.getElementById("answer").style.display = "none";
+      document.getElementById("flip-btn").style.display = "block";
+      document.getElementById("done-actions").style.display = "none";
+
+      // 跨过午夜就换成新一天的空队列。不查这一下的话，persistDrill 会把昨天的
+      // 练习项一路续命到今天 ——「本轮 = 今天」就成了空话。
+      if (todayStr() !== drillDay) reloadDrill();
+
+      // 每出一张牌，练习队列整体前进一格；有到期的就优先出练习卡
+      const ticked = Drill.tickAndPick(drill, Math.random);
+      drill = ticked.items;
+      persistDrill();
+      if (ticked.pickedJp) {
+        showDrillCard(ticked.pickedJp);
+        return;
+      }
+
       const extended = isExtendedToday();
       const params = new URLSearchParams({ book: currentBook });
       if (extended) params.set("extended", "1");
       const res = await fetch("/api/next?" + params.toString());
       const data = await res.json();
 
-      document.getElementById("score-btns").style.display = "none";
-      document.getElementById("answer").style.display = "none";
-      document.getElementById("flip-btn").style.display = "block";
-      document.getElementById("done-actions").style.display = "none";
-
       if (data.done) {
-        const progressLine = `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
-        const head = data.reason === "daily_limit"
-          ? "今天的额度已用完！"
-          : "所有到期单词复习完了！";
+        // 额度用完时不能直接 done，否则点过「模糊」的词会凭空消失：
+        // 用户既没答对它、当天也再见不到它。先把练习队列放完。
+        const fallback = Drill.pickLongestWaiting(drill);
+        if (fallback) {
+          showDrillCard(fallback);
+          return;
+        }
 
-        showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>`);
-        document.getElementById("flip-btn").style.display = "none";
-        document.getElementById("stats").textContent = "";
-        document.getElementById("done-actions").style.display = "flex";
+        isDrillCard = false;
+        showDoneScreen(data);
         return;
       }
 
+      isDrillCard = false;
       showWordFace();
       current = data;
-      renderText(document.getElementById("jp"), data.jp);
-      renderText(document.getElementById("kana"), data.kana || "");
-      document.getElementById("kana").style.display = currentBook === "en" ? "none" : "block";
-      renderText(document.getElementById("answer"), data.zh);
+      renderWordFace(data);
       document.getElementById("section-tag").textContent = data.section;
 
+      document.getElementById("stats").textContent =
+        `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
+    }
+
+    function renderLevelBar(level) {
       const bar = document.getElementById("level-bar");
       bar.innerHTML = "";
       for (let i = 0; i < 5; i++) {
         const d = document.createElement("div");
-        d.className = "dot" + (i < data.level ? " filled" : "");
+        d.className = "dot" + (i < level ? " filled" : "");
         bar.appendChild(d);
       }
-
-      document.getElementById("stats").textContent =
-        `新词 ${data.today_new_count}/${data.new_words_limit} · 复习 ${data.today_review_count}/${data.review_words_limit}`;
     }
 
     function flip() {
@@ -502,6 +575,17 @@
       if (isFreeReview) {
         freeReviewIndex++;
         showFreeReviewCard();
+        return;
+      }
+
+      // 练习卡：不调任何接口。熟练度只由首次点击决定，这里一概不动。
+      if (isDrillCard) {
+        const jp = current.jp;
+        const next = Drill.applyDrillAnswer(drill[jp], s, Math.random);
+        if (next) drill[jp] = next;
+        else delete drill[jp];   // remaining 归零或连败 3 次 —— 放走
+        persistDrill();
+        loadNext();
         return;
       }
 
@@ -521,6 +605,25 @@
             body: JSON.stringify({ jp: current.jp, book: currentBook }),
           });
         }
+      }
+
+      // 首次点「模糊」/「不会」才进练习队列。level 必须用 /api/review 返回的
+      // 新等级，不能用 current.level（那是打分前的旧值）——否则点了「不会」的词
+      // 在练习卡上会显示比实际高一级。
+      // 注意斩词弹窗和建练习项**可能同时发生**：score 2 时 app.py 让 new_level
+      // 保持不变，所以一个本来就满级的词被点「模糊」，reached_max_level 仍为真。
+      // 这种情况下两件事都做是对的 —— 用户说了模糊，当天就该再练一遍，
+      // 而练习项当天过期，不影响斩掉之后的长期状态。
+      const item = Drill.createDrillItem({
+        jp: current.jp,
+        kana: current.kana,
+        zh: current.zh,
+        section: current.section,
+        level: data.level,
+      }, s, Math.random);
+      if (item) {
+        drill[current.jp] = item;
+        persistDrill();
       }
 
       loadNext();
@@ -600,6 +703,7 @@
 
     localStorage.removeItem("tango_extended_date");  // 清掉分本之前的旧 key
     updateBookSwitch();
+    reloadDrill();
     loadNext();
   </script>
 </body>
