@@ -494,8 +494,14 @@
       const head = data.reason === "daily_limit"
         ? "今天的额度已用完！"
         : "所有到期单词复习完了！";
+      // 积压不再挡住新词（见 app.py 的 /api/next），但它会让复习越拖越晚，
+      // 所以要显示出来。不显示的话，用户能观察到的只有"进度莫名其妙变慢"。
+      // 旧响应没有这个字段时 undefined > 0 为 false，自然不显示。
+      const backlogLine = data.review_backlog > 0
+        ? `<br><span class="sub">到期未复习 ${data.review_backlog}</span>`
+        : "";
 
-      showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>`);
+      showDoneMessage(`${head}<br><span class="sub">${progressLine}</span>${backlogLine}`);
       document.getElementById("flip-btn").style.display = "none";
       document.getElementById("stats").textContent = "";
       document.getElementById("done-actions").style.display = "flex";

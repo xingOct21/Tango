@@ -4,6 +4,10 @@
 持续灌新词」三者叠加 25 天以上的累积效应（详见 DEVLOG v2.4）。这种 bug 只有把
 时间跑起来才会暴露，所以这里用假时钟 + 内存假 Supabase 客户端，把两个月压缩成几秒。
 
+v2.6 起还多守一条：新词供给只受新词额度约束（「有积压就不发新词」的闸门已删除），
+所以「复习额度 >= 4 x 新词额度」变成用户要自己遵守的约束。下面用两组配置分别验证
+比例正确时不积压、比例失衡时确实会积压——把这个代价钉成可执行的事实。
+
 覆盖范围：`/api/next` 与 `/api/review` 的业务逻辑随时间的演化。
 **不覆盖**真实数据库的约束（主键冲突、ON CONFLICT 42P10 那类），那些只能在
 Supabase 上验证 —— 假客户端只是 PostgREST 的近似。
@@ -22,8 +26,17 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 APP_PY = os.path.join(REPO, "app.py")
 sys.path.insert(0, REPO)
 
-NEW_LIMIT = 10
-REVIEW_LIMIT = 20
+# 可持续配置：复习额度 >= 4 x 新词额度。一个词升到满级要 4 次复习，
+# 所以 N 新词/天在稳态下产生约 4N 次/天的复习需求。
+NEW_LIMIT = 5
+REVIEW_LIMIT = 40
+
+# 比例失衡的配置（v2.4 之前的线上设置）：10 新词/天意味着约 40 次/天的复习需求，
+# 压在 20 的产能上。v2.6 删掉「有积压就不发新词」的闸门后，这个比例的后果由用户
+# 自己承担，所以下面用它跑两件事：验证积压确实会堆起来，以及做排序的反向断言。
+STRAINED_NEW = 10
+STRAINED_REVIEW = 20
+
 DAYS = 58
 START = datetime.date(2026, 1, 1)
 
@@ -177,21 +190,21 @@ def load_app(source):
 
 SORT_NEW = 'review_due.sort(key=lambda x: (x["next_review"], x["level"]))'
 SORT_OLD = 'review_due.sort(key=lambda x: x["level"])'
-GATE_NEW = "if (extended or remaining_new > 0) and new_words and not review_due:"
-GATE_OLD = "if (extended or remaining_new > 0) and new_words:"
 
 
 def pre_fix_source(source):
-    """还原 v2.4 之前的行为，用于反向断言。
+    """把复习队列的排序还原成 v2.4 之前的 level 升序，用于反向断言。
+
+    v2.4 的另一处改动（新词分支的 `and not review_due` 闸门）已在 v2.6 删除，
+    所以这里只剩排序这一处可还原 —— 而它本来就是死锁的主因：缺口 100% 落在
+    队尾（熟悉度最高的那批），它们永远排不到，level 5 结构性不可达。
 
     替换必须真的发生 —— 否则这个测试会在代码被重写后静默失效，
     变成 v2.2 那种「恒真、不具备证伪能力」的验证。
     """
-    mutated = source.replace(SORT_NEW, SORT_OLD).replace(GATE_NEW, GATE_OLD)
+    mutated = source.replace(SORT_NEW, SORT_OLD)
     assert SORT_OLD in mutated and SORT_NEW not in mutated, \
         "找不到复习队列的排序语句，反向断言已失效，请同步更新 SORT_NEW/SORT_OLD"
-    assert GATE_OLD in mutated and GATE_NEW not in mutated, \
-        "找不到新词分支的判断语句，反向断言已失效，请同步更新 GATE_NEW/GATE_OLD"
     return mutated
 
 
@@ -249,7 +262,7 @@ def main():
     with open(APP_PY, encoding="utf-8") as f:
         source = f.read()
 
-    # 1) 现在的代码：满级必须真的能达到，斩词弹窗必须真的会弹
+    # 1) 比例正确时（复习 >= 4 x 新词）：满级必须真的能达到，斩词弹窗必须真的会弹
     fixed = simulate(load_app(source))
     assert fixed["max_level"] == 5, (
         f"没有任何词升到 level 5（最高 {fixed['max_level']}）—— 斩词永远不会触发。"
@@ -259,23 +272,39 @@ def main():
         f"首次斩词弹窗拖到第 {fixed['first_prompt_day']} 天；理论最短 25 天"
         "（升满级四次复习的间隔 1+3+7+14），超过 35 天说明队列又开始饿死高等级的词")
 
-    # 2) 积压不能系统性堆积：结束时未复习的到期词不该超过一天的复习额度
+    # 2) 比例正确时积压不该系统性堆积：末日未复习的到期词不超过一天的复习额度
     assert fixed["backlog"] <= REVIEW_LIMIT, (
         f"{DAYS} 天后仍积压 {fixed['backlog']} 个到期未复习的词，超过单日复习额度"
-        f" {REVIEW_LIMIT}，说明复习供给长期跟不上")
+        f" {REVIEW_LIMIT}。复习 {REVIEW_LIMIT} / 新词 {NEW_LIMIT} 满足 4 倍规则，"
+        " 这个配置下不该有积压——多半是选词或排序逻辑退化了")
 
-    # 3) 反向断言：把 v2.4 的两处改动还原，上面第 1 条必须失败。
+    # 3) 比例失衡时积压必须真的堆起来。v2.6 删掉了「有积压就不发新词」的闸门，
+    #    4 倍规则从此是用户要自己遵守的约束，而不是代码强制的。这条断言把这个
+    #    代价钉成可执行的事实：不满足 4 倍，积压就会涨，而且没有东西会拦住它。
+    strained = simulate(load_app(source), new_limit=STRAINED_NEW,
+                        review_limit=STRAINED_REVIEW)
+    assert strained["backlog"] > STRAINED_REVIEW * 2, (
+        f"复习 {STRAINED_REVIEW} / 新词 {STRAINED_NEW}（需求约 {STRAINED_NEW * 4}/天）"
+        f" 跑 {DAYS} 天，积压只有 {strained['backlog']}，远低于预期。"
+        " 要么 4 倍规则的前提变了，要么又有什么东西在偷偷限制新词供给——"
+        " 后者正是 v2.6 删掉的那道闸门，别让它以别的形式回来")
+
+    # 4) 反向断言：把排序还原成 v2.4 之前的 level 升序，第 1 条必须失败。
     #    否则这个测试测的是它自己，而不是代码（DEVLOG v2.2 的教训）。
-    broken = simulate(load_app(pre_fix_source(source)))
+    #    必须用失衡配置——比例正确时没有缺口，level 升序也不会饿死任何词。
+    broken = simulate(load_app(pre_fix_source(source)), new_limit=STRAINED_NEW,
+                      review_limit=STRAINED_REVIEW)
     assert broken["prompts"] == 0 and broken["max_level"] < 5, (
-        f"还原成修复前的逻辑后，斩词竟然仍能触发"
+        f"还原成修复前的排序后，斩词竟然仍能触发"
         f"（最高 level {broken['max_level']}，弹窗 {broken['prompts']} 次）。"
         " 这说明本测试已经失去鉴别力，需要重新设计场景")
 
-    print(f"PASS  修复后：最高 level {fixed['max_level']}，"
+    print(f"PASS  复习 {REVIEW_LIMIT}/新词 {NEW_LIMIT}：最高 level {fixed['max_level']}，"
           f"第 {fixed['first_prompt_day']} 天首次斩词，"
           f"弹窗 {fixed['prompts']} 次，末日积压 {fixed['backlog']}")
-    print(f"      反向验证：还原修复前逻辑后最高只到 level {broken['max_level']}，"
+    print(f"      复习 {STRAINED_REVIEW}/新词 {STRAINED_NEW}（比例失衡）："
+          f"末日积压 {strained['backlog']}，符合预期——4 倍规则由用户负责")
+    print(f"      反向验证：还原成 level 升序排序后最高只到 level {broken['max_level']}，"
           f"弹窗 {broken['prompts']} 次")
 
 

@@ -183,9 +183,20 @@ def get_next():
 
     if (extended or remaining_review > 0) and review_due:
         return build_response(review_due[0])
-    # 还有到期没复习的词就不发新词。复习额度用完还继续灌新词的话，积压只增不减，
-    # 高熟悉度的词会被越压越靠后。等积压清完，新词自然恢复。
-    if (extended or remaining_new > 0) and new_words and not review_due:
+    # 新词只受新词额度约束，不因为复习有积压而停发。
+    #
+    # v2.4 曾在这里加过 `and not review_due`（还有到期词没复习完就一个新词都不发），
+    # 作为积压的自动刹车。它确实拦住了积压，但代价是把用户设的新词额度悄悄归零，
+    # 画面上还只说"额度已用完"——正是本项目反复吃亏的那种静默失败。
+    #
+    # 现在把这个权衡交还给用户，规则是「复习额度 >= 4 x 新词额度」：一个词升到满级
+    # 要 4 次复习，所以 N 新词/天在稳态下产生约 4N 次/天的复习需求。这还是每次都
+    # 答对的理想值，「模糊」「不会」都会让它更高，保守按 5 倍设。
+    #
+    # 比例不对时积压会增长，但不再是 v2.4 那种死锁：复习队列已改为按到期日排序，
+    # 缺口均摊到所有到期词，不会再出现高熟悉度的词被永久饿死、level 5 结构性不可达。
+    # 积压条数由下面的 review_backlog 返回并显示在完成画面上，不再是隐形的。
+    if (extended or remaining_new > 0) and new_words:
         return build_response(new_words[0])
 
     # 只有"还有词可出、但被额度挡住"才算额度用完。此前用 or 串联三个条件，
@@ -196,6 +207,9 @@ def get_next():
     return jsonify({
         "done": True,
         "reason": reason,
+        # 到期但今天还没复习的词数。积压不再挡住新词，但它会让复习越拖越晚，
+        # 所以必须能被看见——否则用户唯一能观察到的现象就是"进度莫名其妙变慢"。
+        "review_backlog": len(review_due),
         "today_new_count": today_new_count,
         "new_words_limit": new_words_limit,
         "today_review_count": today_review_count,
